@@ -10,11 +10,11 @@ namespace UsageDock.Providers;
 /// </summary>
 public static class ClaudeUsageParser
 {
-    private static readonly (string Key, string Label)[] KnownWindows =
+    private static readonly (string Key, string Label, int LengthMinutes)[] KnownWindows =
     [
-        ("five_hour", "5 hour"),
-        ("seven_day", "Weekly"),
-        ("seven_day_opus", "Weekly (Opus)")
+        ("five_hour", "5 hour", 300),
+        ("seven_day", "Weekly", 10080),
+        ("seven_day_opus", "Weekly (Opus)", 10080)
     ];
 
     public static IReadOnlyList<QuotaWindow> Parse(string json)
@@ -30,11 +30,11 @@ public static class ClaudeUsageParser
                 return windows;
             }
 
-            foreach (var (key, label) in KnownWindows)
+            foreach (var (key, label, lengthMinutes) in KnownWindows)
             {
                 if (root.TryGetProperty(key, out var section)
                     && section.ValueKind == JsonValueKind.Object
-                    && TryReadWindow(section, label) is { } window)
+                    && TryReadWindow(section, label, TimeSpan.FromMinutes(lengthMinutes)) is { } window)
                 {
                     windows.Add(window);
                 }
@@ -48,14 +48,14 @@ public static class ClaudeUsageParser
         return windows;
     }
 
-    private static QuotaWindow? TryReadWindow(JsonElement section, string label)
+    private static QuotaWindow? TryReadWindow(JsonElement section, string label, TimeSpan length)
     {
         if (!TryReadUtilization(section, out var used))
         {
             return null;
         }
 
-        return QuotaWindow.Create(label, used, TryReadResetsAt(section));
+        return QuotaWindow.Create(label, used, TryReadResetsAt(section), length);
     }
 
     private static bool TryReadUtilization(JsonElement section, out double percent)

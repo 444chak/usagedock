@@ -11,15 +11,21 @@ the screen.
 
 ## What it shows
 
-The dock is a vertical pill with one cell per provider. Each cell has the provider glyph, a ring
-filled to the most used quota window, that percentage, and an activity dot.
+The dock is a vertical pill with one cell per provider. Each cell has two concentric rings around
+the provider mark: the **outer ring is the rolling 5 hour window**, the **inner ring is the weekly
+window**. Below sits the 5 hour percentage, and an activity dot rides the top right corner.
 
 Hovering a cell opens a detail card to its left with the plan, the activity state, every quota
 window with a progress bar and reset countdown, used and left percentages, and how old the
 reading is. The card disappears when the pointer leaves the dock.
 
-Ring colour follows usage: green under 70%, amber from 70%, red from 90%. The activity dot is
-blue for Working, amber for Waiting for user, and grey for Idle.
+Ring colour follows usage: green under 70%, amber from 70%, red from 90%, applied to each ring
+independently. The provider mark keeps its brand colour rather than the usage colour, so it reads
+as an identity while the rings carry the meaning. The activity dot is blue for Working, amber for
+Waiting for user, and grey for Idle.
+
+Both marks are vector paths drawn at render time, so there are no image assets to ship and they
+stay crisp at any DPI.
 
 ## Requirements
 
@@ -107,6 +113,12 @@ used and the estimate is good to about half a sampling interval. When the run be
 retained history, or the estimate has already passed, the card says `unknown` rather than showing
 a made up value.
 
+**How fresh the numbers are.** Claude Desktop writes a sample every fifteen minutes exactly, so
+that cadence is the ceiling on freshness and no amount of polling beats it. The app watches the
+file and refreshes the moment a sample lands, rather than waiting for the next poll, and the card
+always states the age of the reading. The usage endpoint, when a token is available, is live and
+has no such limit.
+
 When a refresh fails the last cached reading stays on screen, annotated with the reason. If
 neither source yields anything the dock shows `--`.
 
@@ -154,7 +166,7 @@ Codex signal can replace it without touching the UI.
 
 This is the constraint the whole window design is built around.
 
-- The dock window is exactly the size of the visible pill, 46 x 120 logical pixels. There is no
+- The dock window is exactly the size of the visible pill, 58 x 156 logical pixels. There is no
   oversized transparent surface anywhere.
 - `AllowsTransparency` is off. The window is opaque, and Windows 11 rounds the corners through
   DWM rather than through a transparent layer.
@@ -166,7 +178,7 @@ This is the constraint the whole window design is built around.
   cannot pull focus away from whatever the user is typing in.
 - `WS_EX_TOOLWINDOW` keeps it out of the taskbar and out of Alt+Tab.
 
-Verified on a 1920x1200 display at 125% scale: the window measures 58x150 physical, the four
+Verified on a 1920x1200 display at 125% scale: the window measures 73x195 physical, the four
 corner pixels answer `HTTRANSPARENT`, the interior answers `HTCLIENT`, the foreground window is
 unchanged by a click on the dock, and only one window is visible when the card is hidden.
 

@@ -15,6 +15,11 @@ public sealed class ProviderViewModel : INotifyPropertyChanged
     private static readonly Brush HighBrush = Frozen(Color.FromRgb(0xF8, 0x71, 0x71));
     private static readonly Brush MutedBrush = Frozen(Color.FromRgb(0x6B, 0x72, 0x80));
 
+    // Brand colours, so a mark reads as an identity while the rings carry the usage colour.
+    private static readonly Brush ClaudeBrand = Frozen(Color.FromRgb(0xD9, 0x77, 0x57));
+    private static readonly Brush CodexBrand = Frozen(Color.FromRgb(0xEC, 0xEF, 0xF4));
+    private static readonly Brush BrandDimmed = Frozen(Color.FromRgb(0x5A, 0x61, 0x70));
+
     private static readonly Brush WorkingBrush = Frozen(Color.FromRgb(0x38, 0xBD, 0xF8));
     private static readonly Brush WaitingBrush = Frozen(Color.FromRgb(0xFB, 0xBF, 0x24));
     private static readonly Brush IdleBrush = Frozen(Color.FromRgb(0x4B, 0x52, 0x63));
@@ -22,10 +27,10 @@ public sealed class ProviderViewModel : INotifyPropertyChanged
     private UsageSnapshot _snapshot;
     private ActivityState _activity = ActivityState.Idle;
 
-    public ProviderViewModel(ProviderId id, string glyph)
+    public ProviderViewModel(ProviderId id)
     {
         Id = id;
-        Glyph = glyph;
+        Glyph = ProviderGlyphs.For(id);
         _snapshot = UsageSnapshot.Failure(id, SnapshotStatus.Error, "Loading");
     }
 
@@ -33,7 +38,7 @@ public sealed class ProviderViewModel : INotifyPropertyChanged
 
     public ProviderId Id { get; }
 
-    public string Glyph { get; }
+    public GlyphSpec Glyph { get; }
 
     public string Name => Id.DisplayName();
 
@@ -43,13 +48,24 @@ public sealed class ProviderViewModel : INotifyPropertyChanged
 
     public bool HasData => _snapshot.HasData;
 
-    public double Percent => _snapshot.Primary?.UsedPercent ?? 0d;
+    /// <summary>Short window usage, shown as the outer ring and as the number.</summary>
+    public double Percent => _snapshot.ShortWindow?.UsedPercent ?? 0d;
 
-    public string PercentText => _snapshot.Primary is { } window
+    /// <summary>Long window usage, shown as the inner ring.</summary>
+    public double LongPercent => _snapshot.LongWindow?.UsedPercent ?? 0d;
+
+    public bool HasLongWindow => _snapshot.LongWindow is not null;
+
+    public string PercentText => _snapshot.ShortWindow is { } window
         ? $"{(int)Math.Round(window.UsedPercent)}"
         : "--";
 
-    public Brush RingBrush => Percent switch
+    public Brush RingBrush => Severity(Percent);
+
+    public Brush LongRingBrush => Severity(LongPercent);
+
+    /// <summary>Green below 70, amber from 70, red from 90.</summary>
+    private static Brush Severity(double percent) => percent switch
     {
         >= 90d => HighBrush,
         >= 70d => WarnBrush,
@@ -66,6 +82,16 @@ public sealed class ProviderViewModel : INotifyPropertyChanged
     };
 
     public Brush PercentBrush => HasData ? RingBrush : MutedBrush;
+
+    /// <summary>Colour of the provider mark in the middle of the rings.</summary>
+    public Brush BrandBrush => !HasData
+        ? BrandDimmed
+        : Id switch
+        {
+            ProviderId.Claude => ClaudeBrand,
+            ProviderId.Codex => CodexBrand,
+            _ => MutedBrush
+        };
 
     public string ActivityText => _activity.DisplayName();
 
@@ -143,6 +169,7 @@ public sealed class ProviderViewModel : INotifyPropertyChanged
                  [
                      nameof(Snapshot), nameof(HasData), nameof(Percent), nameof(PercentText),
                      nameof(RingBrush), nameof(PercentBrush), nameof(Dimmed), nameof(PlanText),
+                     nameof(LongPercent), nameof(HasLongWindow), nameof(LongRingBrush), nameof(BrandBrush),
                      nameof(StatusMessage), nameof(HasStatusMessage), nameof(Windows), nameof(Rows),
                      nameof(UpdatedText)
                  ])

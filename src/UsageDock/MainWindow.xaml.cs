@@ -19,9 +19,9 @@ namespace UsageDock;
 public partial class MainWindow : Window
 {
     /// <summary>Logical size of the visible pill. The window is never bigger than this.</summary>
-    private const double LogicalWidth = 46d;
+    private const double LogicalWidth = 58d;
 
-    private const double LogicalCellHeight = 54d;
+    private const double LogicalCellHeight = 72d;
     private const double LogicalVerticalPadding = 6d;
     private const double LogicalCornerRadius = 10d;
 

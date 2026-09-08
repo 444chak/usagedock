@@ -65,8 +65,8 @@ public partial class App : Application
 
         _providers = new Dictionary<ProviderId, ProviderViewModel>
         {
-            [ProviderId.Claude] = new(ProviderId.Claude, "C"),
-            [ProviderId.Codex] = new(ProviderId.Codex, "X")
+            [ProviderId.Claude] = new(ProviderId.Claude),
+            [ProviderId.Codex] = new(ProviderId.Codex)
         };
 
         _dock = new MainWindow(_config, [_providers[ProviderId.Claude], _providers[ProviderId.Codex]]);

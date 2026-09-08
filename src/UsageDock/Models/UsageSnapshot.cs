@@ -45,6 +45,26 @@ public sealed record UsageSnapshot
     public QuotaWindow? Primary =>
         Windows.Count == 0 ? null : Windows.MaxBy(static w => w.UsedPercent);
 
+    /// <summary>The rolling short window, normally five hours. Drives the outer ring.</summary>
+    public QuotaWindow? ShortWindow =>
+        Match(TimeSpan.FromHours(5), "5 hour") ?? Windows.FirstOrDefault();
+
+    /// <summary>The long window, normally seven days. Drives the inner ring.</summary>
+    public QuotaWindow? LongWindow => Match(TimeSpan.FromDays(7), "week");
+
+    /// <summary>
+    /// Finds a window by its declared length, falling back to its label when a source does not
+    /// report one.
+    /// </summary>
+    private QuotaWindow? Match(TimeSpan length, string nameFragment)
+    {
+        var byLength = Windows.FirstOrDefault(
+            w => w.WindowLength is { } l && Math.Abs((l - length).TotalMinutes) < 1d);
+
+        return byLength ?? Windows.FirstOrDefault(
+            w => w.Name.Contains(nameFragment, StringComparison.OrdinalIgnoreCase));
+    }
+
     public static UsageSnapshot Failure(ProviderId provider, SnapshotStatus status, string message) => new()
     {
         Provider = provider,

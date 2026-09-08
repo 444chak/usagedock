@@ -22,6 +22,7 @@ public sealed class UsageCoordinator : IAsyncDisposable
 
     private Timer? _usageTimer;
     private Timer? _activityTimer;
+    private UsageFileWatcher? _claudeWatcher;
 
     public UsageCoordinator(CacheService cache, ActivityService activity)
     {
@@ -57,6 +58,16 @@ public sealed class UsageCoordinator : IAsyncDisposable
 
         // Activity is cheap and local, so it can refresh much faster than the quotas.
         _activityTimer = new Timer(_ => PublishActivity(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2));
+
+        // Claude Desktop writes a new usage sample every fifteen minutes. Reacting to the write
+        // means a new sample shows up at once instead of waiting for the next poll.
+        _claudeWatcher = new UsageFileWatcher(AppPaths.ClaudeDesktopUsageFile);
+        _claudeWatcher.Changed += () => _ = PollAsync();
+
+        if (_claudeWatcher.IsWatching)
+        {
+            Log.Info("Watching Claude Desktop usage history for changes");
+        }
     }
 
     public void SetPollInterval(int pollSeconds)
@@ -162,6 +173,8 @@ public sealed class UsageCoordinator : IAsyncDisposable
         {
             await _activityTimer.DisposeAsync().ConfigureAwait(false);
         }
+
+        _claudeWatcher?.Dispose();
 
         _http.Dispose();
         _cts.Dispose();
