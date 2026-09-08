@@ -4,6 +4,7 @@ using System.Windows.Interop;
 using System.Windows.Threading;
 using UsageDock.Models;
 using UsageDock.Native;
+using UsageDock.Services;
 using UsageDock.Ui;
 
 namespace UsageDock;
@@ -12,7 +13,8 @@ namespace UsageDock;
 /// The dock itself: a small always on top strip glued to the right edge of a monitor.
 ///
 /// The window is sized to exactly the visible pill and nothing more, so there is no large
-/// invisible surface anywhere on screen.
+/// invisible surface anywhere on screen. The only pixels that are not painted are the four
+/// rounded corners, and WM_NCHITTEST reports those as transparent so clicks pass through.
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -21,6 +23,7 @@ public partial class MainWindow : Window
 
     private const double LogicalCellHeight = 54d;
     private const double LogicalVerticalPadding = 6d;
+    private const double LogicalCornerRadius = 10d;
 
     private readonly List<ProviderCell> _cells = [];
     private readonly HoverCard _card = new();
@@ -64,13 +67,16 @@ public partial class MainWindow : Window
         _hwnd = new WindowInteropHelper(this).Handle;
         WindowInterop.ApplyDockStyles(_hwnd);
 
+        HwndSource.FromHwnd(_hwnd)?.AddHook(WndProc);
+
         Reposition();
         _topmostTimer.Start();
     }
 
     /// <summary>
-    /// Recomputes size and position for the configured monitor, in physical pixels through
-    /// SetWindowPos.
+    /// Recomputes size and position for the configured monitor. Everything is done in physical
+    /// pixels through SetWindowPos, so a secondary display at a different scale lands exactly
+    /// on its own right edge.
     /// </summary>
     public void Reposition()
     {
@@ -135,6 +141,62 @@ public partial class MainWindow : Window
         {
             _bounds = rect;
         }
+    }
+
+    private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
+    {
+        switch (msg)
+        {
+            case NativeMethods.WM_NCHITTEST:
+            {
+                handled = true;
+                return HitTestPoint(lParam);
+            }
+
+            // Clicking the dock must never pull focus away from the app the user is typing in.
+            case NativeMethods.WM_MOUSEACTIVATE:
+                handled = true;
+                return NativeMethods.MA_NOACTIVATE;
+
+            case NativeMethods.WM_DPICHANGED:
+            case NativeMethods.WM_DISPLAYCHANGE:
+                Dispatcher.BeginInvoke(Reposition, DispatcherPriority.Background);
+                handled = msg == NativeMethods.WM_DPICHANGED;
+                return nint.Zero;
+
+            case NativeMethods.WM_SETTINGCHANGE:
+                // Covers taskbar auto hide and work area changes.
+                Dispatcher.BeginInvoke(Reposition, DispatcherPriority.Background);
+                return nint.Zero;
+
+            default:
+                return nint.Zero;
+        }
+    }
+
+    /// <summary>
+    /// Reports the rounded corners as transparent so the desktop underneath stays clickable.
+    /// </summary>
+    private nint HitTestPoint(nint lParam)
+    {
+        RefreshBounds();
+
+        var screenX = (short)(lParam.ToInt64() & 0xFFFF);
+        var screenY = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+
+        var x = screenX - _bounds.Left;
+        var y = screenY - _bounds.Top;
+
+        var inside = HitTest.IsInsideRoundedRect(
+            x, y, _bounds.Width, _bounds.Height, LogicalCornerRadius * _scale);
+
+        if (!inside)
+        {
+            _card.HideCard();
+            return NativeMethods.HTTRANSPARENT;
+        }
+
+        return NativeMethods.HTCLIENT;
     }
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
