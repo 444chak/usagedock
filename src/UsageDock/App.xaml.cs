@@ -20,6 +20,8 @@ public partial class App : Application
     private TrayMenu _tray = null!;
     private MainWindow _dock = null!;
     private Dictionary<ProviderId, ProviderViewModel> _providers = null!;
+    private bool _isDuplicateInstance;
+    private string _tooltip = string.Empty;
 
     [STAThread]
     public static int Main(string[] args)
@@ -42,7 +44,9 @@ public partial class App : Application
         _singleInstance = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var isFirst);
         if (!isFirst)
         {
-            // A second copy would add a second tray icon and a second dock. Bow out quietly.
+            // A second copy would add a second tray icon and a second dock. Bow out quietly,
+            // without touching the data folder or the log of the instance that is running.
+            _isDuplicateInstance = true;
             Shutdown();
             return;
         }
@@ -99,16 +103,28 @@ public partial class App : Application
                     return;
                 }
 
-                viewModel.Update(update.Snapshot);
+                if (update.Snapshot is { } snapshot)
+                {
+                    viewModel.Update(snapshot);
+                    UpdateTrayTooltip();
+                }
+
                 viewModel.UpdateActivity(update.Activity);
-                UpdateTrayTooltip();
             });
     }
 
     private void UpdateTrayTooltip()
     {
         var parts = _providers.Values.Select(p => $"{p.Name} {p.PercentText}%");
-        _tray.SetTooltip(string.Join("  ", parts));
+        var text = string.Join("  ", parts);
+
+        if (text == _tooltip)
+        {
+            return;
+        }
+
+        _tooltip = text;
+        _tray.SetTooltip(text);
     }
 
     private static void OnDispatcherUnhandledException(
@@ -122,6 +138,12 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        if (_isDuplicateInstance)
+        {
+            base.OnExit(e);
+            return;
+        }
+
         Log.Info("UsageDock exiting");
 
         try

@@ -62,29 +62,42 @@ public static class JsonIo
         }
     }
 
-    /// <summary>Writes via a temporary file then replaces, so readers never see a half file.</summary>
+    /// <summary>
+    /// Writes via a temporary file then moves it into place, so a reader never sees a half
+    /// written file.
+    ///
+    /// The temporary name carries the process id because Claude Code fires hooks concurrently:
+    /// several hook processes can write the same activity file at the same moment, and a shared
+    /// temporary name would make them collide.
+    /// </summary>
     public static bool TryWriteFile<T>(string path, T value)
     {
+        var temp = $"{path}.{Environment.ProcessId:x}.tmp";
+
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            var temp = path + ".tmp";
             File.WriteAllText(temp, JsonSerializer.Serialize(value, Options));
 
-            if (File.Exists(path))
-            {
-                File.Replace(temp, path, destinationBackupFileName: null, ignoreMetadataErrors: true);
-            }
-            else
-            {
-                File.Move(temp, path);
-            }
+            // Atomic replace on the same volume, and unlike File.Replace it does not need the
+            // destination to already exist.
+            File.Move(temp, path, overwrite: true);
 
             return true;
         }
         catch (Exception ex)
         {
             Log.Error($"Failed writing {Path.GetFileName(path)}", ex);
+
+            try
+            {
+                File.Delete(temp);
+            }
+            catch (IOException)
+            {
+                // Leaving a stray temp file behind is not worth a second failure.
+            }
+
             return false;
         }
     }

@@ -23,7 +23,14 @@ public partial class HoverCard : Window
     public HoverCard()
     {
         InitializeComponent();
+
+        // Parked off screen at its real width until the first ShowFor positions it. Without an
+        // explicit size WPF picks a large default, which would exist as a big hidden window and
+        // flash at the wrong size and place on the very first hover.
         Width = LogicalWidth;
+        Height = 40d;
+        Left = -32000d;
+        Top = -32000d;
     }
 
     protected override void OnSourceInitialized(EventArgs e)

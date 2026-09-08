@@ -3,7 +3,8 @@ using UsageDock.Providers;
 
 namespace UsageDock.Services;
 
-public sealed record ProviderUpdate(ProviderId Provider, UsageSnapshot Snapshot, ActivityState Activity);
+/// <summary>A null <paramref name="Snapshot"/> means only the activity state changed.</summary>
+public sealed record ProviderUpdate(ProviderId Provider, UsageSnapshot? Snapshot, ActivityState Activity);
 
 /// <summary>
 /// Polls every provider on a timer and pushes results out. A failed poll falls back to the last
@@ -77,12 +78,17 @@ public sealed class UsageCoordinator : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Activity only tick. It deliberately carries no snapshot: re-publishing the quota numbers
+    /// every couple of seconds would raise a dozen property changes and rebuild the hover card
+    /// rows for values that did not move.
+    /// </summary>
     private void PublishActivity()
     {
-        Updated?.Invoke(new ProviderUpdate(
-            ProviderId.Claude,
-            _cache.Get(ProviderId.Claude) ?? UsageSnapshot.Failure(ProviderId.Claude, SnapshotStatus.Error, "Loading"),
-            CurrentActivity(ProviderId.Claude)));
+        foreach (var id in (ProviderId[])[ProviderId.Claude, ProviderId.Codex])
+        {
+            Updated?.Invoke(new ProviderUpdate(id, null, CurrentActivity(id)));
+        }
     }
 
     private ActivityState CurrentActivity(ProviderId id) => id switch

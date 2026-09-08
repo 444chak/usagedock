@@ -4,7 +4,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <InvariantGlobalization>true</InvariantGlobalization>
+    <!--
+      InvariantGlobalization must stay off: WPF resolves XmlLanguage through CultureInfo,
+      and en-us cannot be created in invariant mode, which makes XAML parsing throw.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
     <Deterministic>true</Deterministic>
     <NuGetAudit>false</NuGetAudit>
   </PropertyGroup>
