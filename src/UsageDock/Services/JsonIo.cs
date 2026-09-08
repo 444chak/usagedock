@@ -7,6 +7,8 @@ namespace UsageDock.Services;
 /// </summary>
 public static class JsonIo
 {
+    private static int _writeSequence;
+
     public static readonly JsonSerializerOptions Options = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -66,13 +68,14 @@ public static class JsonIo
     /// Writes via a temporary file then moves it into place, so a reader never sees a half
     /// written file.
     ///
-    /// The temporary name carries the process id because Claude Code fires hooks concurrently:
-    /// several hook processes can write the same activity file at the same moment, and a shared
-    /// temporary name would make them collide.
+    /// The temporary name is unique per call, combining the process id with a counter. Claude
+    /// Code fires hooks concurrently, so several processes can write the same activity file at
+    /// the same moment, and a shared temporary name would make them clobber each other.
     /// </summary>
     public static bool TryWriteFile<T>(string path, T value)
     {
-        var temp = $"{path}.{Environment.ProcessId:x}.tmp";
+        var ticket = Interlocked.Increment(ref _writeSequence);
+        var temp = $"{path}.{Environment.ProcessId:x}-{ticket:x}.tmp";
         Exception? last = null;
 
         // Two writers can still collide on the destination rename itself. Losing that race is
