@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, without the leading v (for a dry run)"
+        required: true
+        default: "0.0.0-dev"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # global.json pins the SDK, so the runner builds with the same one as a developer.
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="${{ github.event.inputs.version }}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building $version"
+
+      - name: Build
+        run: dotnet build -c Release -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Test
+        run: dotnet test -c Release --no-build
+
+      # Self-contained, single file, deliberately NOT compressed. Compression halves the
+      # download to about 63 MB but more than doubles resident memory, because the assemblies
+      # are decompressed into memory instead of being mapped from the bundle. For a widget that
+      # sits on screen all day the memory matters more than the download.
+      - name: Publish standalone
+        run: >
+          dotnet publish src/UsageDock/UsageDock.csproj
+          -c Release -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:EnableCompressionInSingleFile=false
+          -p:Version=${{ steps.version.outputs.version }}
+          -o publish/standalone
+
+      - name: Publish framework-dependent
+        run: >
+          dotnet publish src/UsageDock/UsageDock.csproj
+          -c Release -r win-x64
+          --self-contained false
+          -p:PublishSingleFile=true
+          -p:Version=${{ steps.version.outputs.version }}
+          -o publish/framework-dependent
+
+      - name: Name the artifacts
+        shell: bash
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          mkdir -p dist
+          cp publish/standalone/UsageDock.exe "dist/UsageDock-$v-win-x64.exe"
+          cp publish/framework-dependent/UsageDock.exe "dist/UsageDock-$v-win-x64-framework-dependent.exe"
+          ls -la dist
+
+      - name: Checksums
+        shell: bash
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UsageDock-${{ steps.version.outputs.version }}
+          path: dist/*
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            ### Which file do I want?
+
+            | File | Size | Needs |
+            | --- | --- | --- |
+            | `UsageDock-${{ steps.version.outputs.version }}-win-x64.exe` | ~140 MB | nothing, just run it |
+            | `UsageDock-${{ steps.version.outputs.version }}-win-x64-framework-dependent.exe` | ~0.3 MB | [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) |
+
+            Both are the same app and use about the same memory, around 60 MB. The large one
+            carries the .NET runtime inside it.
+
+            **Put it somewhere permanent before installing the Claude Code hooks**, for example
+            `%LOCALAPPDATA%\Programs\UsageDock\`. The hooks record an absolute path, so running
+            the app from your Downloads folder and later deleting it leaves Claude Code launching
+            something that is not there. If you do move it, start the new copy once and it
+            repairs its own hook entries.
+
+            Then use the tray icon: **Start with Windows**, and **Install Claude Code hooks** for
+            the Working / Waiting / Idle indicator.

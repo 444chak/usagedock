@@ -8,6 +8,8 @@ x86/
 [Aa][Rr][Mm]64/
 artifacts/
 publish/
+pub-*/
+dist/
 *.user
 *.suo
 *.userosscache

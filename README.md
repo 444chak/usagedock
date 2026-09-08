@@ -55,7 +55,21 @@ reads as a confusing MSB3027 about `apphost.exe`.
 
 ## Install
 
-**Do not run it from the build folder.** The Claude Code hooks record an absolute path to the
+Grab a build from [Releases](https://github.com/444chak/usagedock/releases), or build it yourself
+with the steps above.
+
+| File | Size | Needs |
+| --- | --- | --- |
+| `UsageDock-<version>-win-x64.exe` | ~140 MB | nothing, just run it |
+| `UsageDock-<version>-win-x64-framework-dependent.exe` | ~0.3 MB | .NET 10 Desktop Runtime |
+
+Both are the same app and use about the same memory, around 60 MB; the large one carries the .NET
+runtime inside it. The standalone build is deliberately **not** compressed: compression would
+halve the download to about 63 MB, but assemblies would then be decompressed into memory instead
+of mapped from the bundle, which pushes resident memory from 59 MB to 136 MB. For something that
+sits on screen all day that is the wrong trade.
+
+**Do not run it from the build folder, or from Downloads.** The Claude Code hooks record an absolute path to the
 executable, so a clean build deletes the target from under Claude Code, and Windows then shows its
 "install .NET" dialog on every hook event. Copy the app somewhere permanent first:
 
