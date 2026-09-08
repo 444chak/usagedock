@@ -1,0 +1,34 @@
+## .NET / Visual Studio
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]64/
+artifacts/
+publish/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+.vscode/
+*.binlog
+project.lock.json
+project.assets.json
+*.nuget.props
+*.nuget.targets
+msbuild.log
+TestResults/
+*.trx
+*.coverage
+*.received.*
+
+## OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+## Local tooling
+.idea/

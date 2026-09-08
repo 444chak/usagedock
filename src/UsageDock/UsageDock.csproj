@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>UsageDock</RootNamespace>
+    <AssemblyName>UsageDock</AssemblyName>
+    <Platforms>AnyCPU</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+    <StartupObject>UsageDock.App</StartupObject>
+    <!--
+      WFO0003 is a WinForms analyzer asking for ApplicationHighDpiMode. This is a WPF app that
+      only borrows WinForms for the tray icon, so PerMonitorV2 belongs in the manifest.
+    -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+
+  <!--
+    UseWindowsForms replaces the default implicit usings with the WinForms set, which collides
+    with WPF on Brush, Color, Point, Application and Timer. Drop the two ambiguous namespaces
+    globally (the tray code imports them explicitly) and restore the usual base set.
+  -->
+  <ItemGroup>
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Drawing.Design" />
+    <Using Remove="System.Windows.Forms" />
+    <Using Include="System" />
+    <Using Include="System.Collections.Generic" />
+    <Using Include="System.IO" />
+    <Using Include="System.Linq" />
+    <Using Include="System.Net.Http" />
+    <Using Include="System.Threading" />
+    <Using Include="System.Threading.Tasks" />
+  </ItemGroup>
+
+  <!--
+    App.xaml is compiled as a Page rather than an ApplicationDefinition so that the explicit
+    Main in App.xaml.cs is the entry point. That lets a hook invocation write its state file and
+    exit without ever starting WPF.
+  -->
+  <ItemGroup>
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" SubType="Designer" Generator="MSBuild:Compile" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="UsageDock.Tests" />
+  </ItemGroup>
+
+</Project>
