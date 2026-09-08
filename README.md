@@ -86,7 +86,9 @@ up.
 
 If you later move or rebuild the app, start the new copy once. It notices that the installed hooks
 point somewhere else and rewrites its own entries to the current path, leaving hooks belonging to
-other tools alone.
+other tools alone. Note that this happens for **any** copy you launch, so running a freshly
+downloaded build from your Downloads folder will quietly claim the hooks; start your real copy
+again afterwards to hand them back.
 
 To uninstall: tray menu, **Uninstall Claude Code hooks**, untick **Start with Windows**, quit, then
 delete the program folder and `%APPDATA%\UsageDock\`.
