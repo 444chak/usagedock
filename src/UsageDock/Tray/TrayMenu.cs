@@ -111,9 +111,23 @@ public sealed class TrayMenu : IDisposable
     {
         var ok = _hooks.Install();
         Log.Info($"Hook install result: {ok}");
-        Notify(ok
-            ? "Claude Code hooks installed. Restart Claude Code to pick them up."
-            : "Could not write Claude Code settings.");
+
+        if (!ok)
+        {
+            Notify("Could not write Claude Code settings.");
+        }
+        else if (_hooks.IsRunningFromBuildOutput())
+        {
+            // Hooks record an absolute path. Pointing them into bin\Release means the next clean
+            // build deletes the target from under Claude Code.
+            Notify("Hooks installed, but this copy runs from a build folder. "
+                   + "Copy the app somewhere permanent and start it from there.");
+        }
+        else
+        {
+            Notify("Claude Code hooks installed. Restart Claude Code to pick them up.");
+        }
+
         SyncState();
     }
 

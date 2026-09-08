@@ -72,7 +72,10 @@ public partial class App : Application
         _dock = new MainWindow(_config, [_providers[ProviderId.Claude], _providers[ProviderId.Codex]]);
         _dock.Show();
 
-        _tray = new TrayMenu(new HookInstaller());
+        var hooks = new HookInstaller();
+        RepointHooksIfMoved(hooks);
+
+        _tray = new TrayMenu(hooks);
         _tray.RefreshRequested += () => _ = _coordinator.RefreshNowAsync();
         _tray.ResetPositionRequested += OnResetPosition;
         _tray.QuitRequested += () => Dispatcher.BeginInvoke(Shutdown);
@@ -80,6 +83,32 @@ public partial class App : Application
         _coordinator = new UsageCoordinator(_cache, _activity);
         _coordinator.Updated += OnProviderUpdated;
         _coordinator.Start(_config.PollSeconds);
+    }
+
+    /// <summary>
+    /// Hooks store an absolute path to this executable. If the app has been moved or reinstalled
+    /// since they were written, Claude Code would launch something that is no longer there and
+    /// Windows would pop its "install .NET" dialog on every hook event. Rewriting our own entries
+    /// to the current path costs one file write and only happens when the path actually differs.
+    /// </summary>
+    private static void RepointHooksIfMoved(HookInstaller hooks)
+    {
+        try
+        {
+            if (!hooks.NeedsRepointing())
+            {
+                return;
+            }
+
+            if (hooks.Install())
+            {
+                Log.Info("Claude Code hooks re-pointed to the current executable");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Could not re-point Claude Code hooks", ex);
+        }
     }
 
     private void OnResetPosition()

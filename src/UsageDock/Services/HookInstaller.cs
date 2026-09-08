@@ -56,6 +56,37 @@ public sealed class HookInstaller
         return text is not null && text.Contains(Marker, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// True when hooks are installed but point at a different copy of the app than this one.
+    ///
+    /// Hooks store an absolute path, so moving or reinstalling the app leaves Claude Code
+    /// launching an executable that is no longer there. Windows then shows its "install .NET"
+    /// dialog on every single hook event, which is as unpleasant as it sounds.
+    /// </summary>
+    public bool NeedsRepointing()
+    {
+        var text = JsonIo.TryReadAllText(_settingsPath);
+
+        if (text is null || !text.Contains(Marker, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        // The path is JSON escaped in the file, so compare on the escaped form.
+        var escaped = _executablePath.Replace("\\", "\\\\", StringComparison.Ordinal);
+
+        return !text.Contains(escaped, StringComparison.OrdinalIgnoreCase)
+               && !text.Contains(_executablePath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// True when this copy of the app is running out of a build output directory. Hooks pointing
+    /// there break on the next clean build, so it is worth warning about.
+    /// </summary>
+    public bool IsRunningFromBuildOutput() =>
+        _executablePath.Contains(@"\bin\Debug\", StringComparison.OrdinalIgnoreCase)
+        || _executablePath.Contains(@"\bin\Release\", StringComparison.OrdinalIgnoreCase);
+
     public bool Install()
     {
         return Edit(root =>
