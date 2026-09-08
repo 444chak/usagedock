@@ -50,11 +50,43 @@ Run the tests with:
 dotnet test
 ```
 
-To get a copy that does not need the runtime installed:
+Stop the app before building. MSBuild cannot overwrite a running `UsageDock.exe`, and the failure
+reads as a confusing MSB3027 about `apphost.exe`.
+
+## Install
+
+**Do not run it from the build folder.** The Claude Code hooks record an absolute path to the
+executable, so a clean build deletes the target from under Claude Code, and Windows then shows its
+"install .NET" dialog on every hook event. Copy the app somewhere permanent first:
 
 ```bash
-dotnet publish src/UsageDock/UsageDock.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+dotnet build -c Release
+mkdir -p "$LOCALAPPDATA/Programs/UsageDock"
+cp -r src/UsageDock/bin/Release/net10.0-windows/win-x64/* "$LOCALAPPDATA/Programs/UsageDock/"
+"$LOCALAPPDATA/Programs/UsageDock/UsageDock.exe"
 ```
+
+Then from the tray icon: **Start with Windows**, and **Install Claude Code hooks** if you want the
+Working / Waiting / Idle indicator on Claude. Restart Claude Code afterwards so it picks the hooks
+up.
+
+If you later move or rebuild the app, start the new copy once. It notices that the installed hooks
+point somewhere else and rewrites its own entries to the current path, leaving hooks belonging to
+other tools alone.
+
+To uninstall: tray menu, **Uninstall Claude Code hooks**, untick **Start with Windows**, quit, then
+delete the program folder and `%APPDATA%\UsageDock\`.
+
+### Self-contained build
+
+For a copy that needs no .NET runtime installed at all (about 148 MB, a single file):
+
+```bash
+dotnet publish src/UsageDock/UsageDock.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
+```
+
+Note that this also switches the ordinary `bin/Release` output to a self-contained layout, so run a
+clean `dotnet build -c Release` afterwards if you want the framework-dependent one back.
 
 ## Tray menu
 
