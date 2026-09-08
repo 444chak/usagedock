@@ -1,0 +1,45 @@
+namespace UsageDock.Services;
+
+/// <summary>
+/// Every path the app writes to. Nothing here ever holds a secret.
+/// </summary>
+public static class AppPaths
+{
+    public static string DataDirectory { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "UsageDock");
+
+    public static string ConfigFile => Path.Combine(DataDirectory, "config.json");
+
+    public static string CacheFile => Path.Combine(DataDirectory, "cache.json");
+
+    public static string LogDirectory => Path.Combine(DataDirectory, "logs");
+
+    /// <summary>Directory holding one small activity file per provider, written by hooks.</summary>
+    public static string ActivityDirectory => Path.Combine(DataDirectory, "activity");
+
+    public static string ActivityFile(string providerKey) =>
+        Path.Combine(ActivityDirectory, providerKey + ".json");
+
+    public static string UserProfile { get; } =
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+    public static string ClaudeHome => Path.Combine(UserProfile, ".claude");
+
+    public static string ClaudeCredentialsFile => Path.Combine(ClaudeHome, ".credentials.json");
+
+    public static string ClaudeSettingsFile => Path.Combine(ClaudeHome, "settings.json");
+
+    public static string CodexHome => Path.Combine(UserProfile, ".codex");
+
+    public static string CodexAuthFile => Path.Combine(CodexHome, "auth.json");
+
+    public static string CodexSessionsDirectory => Path.Combine(CodexHome, "sessions");
+
+    public static void EnsureCreated()
+    {
+        Directory.CreateDirectory(DataDirectory);
+        Directory.CreateDirectory(LogDirectory);
+        Directory.CreateDirectory(ActivityDirectory);
+    }
+}

@@ -1,0 +1,44 @@
+<UserControl x:Class="UsageDock.Ui.ProviderCell"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:UsageDock.Ui"
+             Width="44" Height="54"
+             Focusable="False"
+             Background="Transparent"
+             SnapsToDevicePixels="True"
+             UseLayoutRounding="True">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="30" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="0,4,0,0">
+            <ui:UsageRing x:Name="Ring"
+                          Width="28" Height="28"
+                          StrokeThickness="3"
+                          Percent="{Binding Percent}"
+                          Dimmed="{Binding Dimmed}"
+                          Glyph="{Binding Glyph}"
+                          GlyphBrush="{Binding PercentBrush}"
+                          ProgressBrush="{Binding RingBrush}"
+                          TrackBrush="{StaticResource RingTrack}" />
+
+            <Ellipse Width="7" Height="7"
+                     HorizontalAlignment="Right" VerticalAlignment="Top"
+                     Margin="0,-1,3,0"
+                     Fill="{Binding ActivityBrush}" />
+        </Grid>
+
+        <TextBlock Grid.Row="1"
+                   Text="{Binding PercentText}"
+                   Foreground="{Binding PercentBrush}"
+                   FontFamily="Segoe UI"
+                   FontSize="10"
+                   FontWeight="SemiBold"
+                   HorizontalAlignment="Center"
+                   Margin="0,1,0,0"
+                   TextOptions.TextFormattingMode="Display" />
+    </Grid>
+</UserControl>
