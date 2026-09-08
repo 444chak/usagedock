@@ -30,6 +30,15 @@ public static class AppPaths
 
     public static string ClaudeSettingsFile => Path.Combine(ClaudeHome, "settings.json");
 
+    /// <summary>
+    /// Usage history written by Claude Desktop. Read only, and the only Claude quota source on a
+    /// machine that has the desktop app but not the standalone CLI.
+    /// </summary>
+    public static string ClaudeDesktopUsageFile => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "Claude",
+        "plan-usage-history.json");
+
     public static string CodexHome => Path.Combine(UserProfile, ".codex");
 
     public static string CodexAuthFile => Path.Combine(CodexHome, "auth.json");

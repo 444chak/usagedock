@@ -72,16 +72,43 @@ No secret is ever written here.
 
 ### Claude
 
-The OAuth token that Claude Code stores in `%USERPROFILE%\.claude\.credentials.json` is read,
-strictly read only, and used as a bearer token for one request to the usage endpoint. The file is
-never modified. The token is never logged, never cached, and never written anywhere.
+Claude Code and Claude Desktop keep their sessions in different places, so there are two sources
+and the app takes whichever is available.
+
+**Source 1, the usage endpoint.** The standalone Claude Code CLI stores an OAuth token in
+`%USERPROFILE%\.claude\.credentials.json`. When one is there it is read, strictly read only, and
+used as a bearer token for one request. This source is preferred because it is live and carries
+exact reset times. The file is never modified, and the token is never logged, never cached and
+never written anywhere.
 
 401 and 403 are reported as a credentials problem rather than retried. 429 honours `Retry-After`.
-Anything else falls back to capped exponential backoff, 30s doubling to a 30 minute ceiling. When
-a refresh fails the last cached reading stays on screen, annotated with the reason.
+Anything else falls back to capped exponential backoff, 30s doubling to a 30 minute ceiling.
 
-If the credentials file has no token, the dock shows `--` and the card says `Not signed in to
-Claude Code` rather than failing.
+**Source 2, the local usage history.** Claude Desktop keeps its session in an encrypted Electron
+store, not in `.credentials.json`, which on those machines is present but holds empty token
+strings. There is therefore no bearer token to use, and decrypting another application's
+protected credential store is not something this app does.
+
+It does not need to. Claude Desktop writes `%APPDATA%\Claude\plan-usage-history.json`, a series
+of samples roughly every fifteen minutes:
+
+```json
+{ "t": 1788899116963, "org": "...", "u": { "fh": 52, "sd": 14 } }
+```
+
+`fh` is the five hour window and `sd` the seven day window, both percentages. Reading this needs
+no token and no network, exactly like the Codex path. The `org` identifier is deliberately never
+read.
+
+The file carries no reset timestamp, but usage only grows inside a window and returns to zero
+when one rolls, so the start of the current run of non zero samples locates the window and the
+reset is one window length later. The true boundary sits between two samples, so the midpoint is
+used and the estimate is good to about half a sampling interval. When the run begins before the
+retained history, or the estimate has already passed, the card says `unknown` rather than showing
+a made up value.
+
+When a refresh fails the last cached reading stays on screen, annotated with the reason. If
+neither source yields anything the dock shows `--`.
 
 ### Codex
 

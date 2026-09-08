@@ -6,8 +6,13 @@ using UsageDock.Services;
 namespace UsageDock.Providers;
 
 /// <summary>
-/// Reads Claude Code quotas from the OAuth usage endpoint, using the token that Claude Code
-/// already stores locally. The token is held only for the duration of one request.
+/// Claude quotas, from whichever source is available.
+///
+/// The standalone Claude Code CLI stores an OAuth token in .credentials.json, and when one is
+/// there the usage endpoint is the better source: it is live and it carries exact reset times.
+/// Claude Desktop keeps its session in an encrypted Electron store instead, so on those machines
+/// there is no bearer token to use, and the quotas come from the usage history the desktop app
+/// writes to disk. Either way nothing but the app itself ever sees a credential.
 /// </summary>
 public sealed class ClaudeUsageProvider : IUsageProvider
 {
@@ -18,17 +23,20 @@ public sealed class ClaudeUsageProvider : IUsageProvider
     private readonly RateLimitPolicy _policy;
     private readonly Func<DateTimeOffset> _now;
     private readonly string? _credentialsPath;
+    private readonly string? _localUsagePath;
 
     public ClaudeUsageProvider(
         HttpClient http,
         RateLimitPolicy? policy = null,
         Func<DateTimeOffset>? now = null,
-        string? credentialsPath = null)
+        string? credentialsPath = null,
+        string? localUsagePath = null)
     {
         _http = http;
         _policy = policy ?? new RateLimitPolicy();
         _now = now ?? (() => DateTimeOffset.UtcNow);
         _credentialsPath = credentialsPath;
+        _localUsagePath = localUsagePath;
     }
 
     public ProviderId Id => ProviderId.Claude;
@@ -36,34 +44,65 @@ public sealed class ClaudeUsageProvider : IUsageProvider
     public async Task<UsageSnapshot> FetchAsync(CancellationToken cancellationToken)
     {
         var now = _now();
-
-        if (!_policy.CanAttempt(now))
-        {
-            return UsageSnapshot.Failure(
-                Id,
-                SnapshotStatus.RateLimited,
-                $"Backing off, retry in {FormatDelay(_policy.NextAttemptUtc - now)}");
-        }
-
         var credentials = ClaudeCredentialsReader.Read(_credentialsPath);
+        string? apiProblem = null;
 
-        if (!credentials.HasToken)
+        if (credentials.HasToken && !credentials.IsExpired(now))
         {
-            // Not a network failure, so no backoff: the user may sign in at any moment.
-            return UsageSnapshot.Failure(
-                Id,
-                SnapshotStatus.NoCredentials,
-                "Not signed in to Claude Code");
+            if (_policy.CanAttempt(now))
+            {
+                var (snapshot, problem) = await CallUsageEndpointAsync(credentials, now, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (snapshot is not null)
+                {
+                    return snapshot;
+                }
+
+                apiProblem = problem;
+            }
+            else
+            {
+                apiProblem = $"Backing off, retry in {FormatDelay(_policy.NextAttemptUtc - now)}";
+            }
         }
 
-        if (credentials.IsExpired(now))
+        // Local history written by Claude Desktop. No token, no network, nothing to throttle.
+        if (ClaudeLocalUsageReader.Read(_localUsagePath, now) is { Windows.Count: > 0 } local)
         {
-            return UsageSnapshot.Failure(
-                Id,
-                SnapshotStatus.NoCredentials,
-                "Claude Code session expired, run /login");
+            return new UsageSnapshot
+            {
+                Provider = Id,
+                Status = SnapshotStatus.Ok,
+                Windows = local.Windows,
+                Plan = credentials.SubscriptionType,
+                // As fresh as the last desktop sample, not as fresh as this poll.
+                UpdatedAt = local.SampledAt,
+                Message = apiProblem
+            };
         }
 
+        if (apiProblem is not null)
+        {
+            return UsageSnapshot.Failure(Id, SnapshotStatus.Error, apiProblem);
+        }
+
+        return UsageSnapshot.Failure(
+            Id,
+            SnapshotStatus.NoCredentials,
+            credentials.HasToken
+                ? "Claude Code session expired, run /login"
+                : "No local Claude usage found");
+    }
+
+    /// <summary>
+    /// Returns a snapshot on success, or the reason it failed so the caller can fall back.
+    /// </summary>
+    private async Task<(UsageSnapshot? Snapshot, string? Problem)> CallUsageEndpointAsync(
+        ClaudeCredentialsReader.Result credentials,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, UsageEndpoint);
@@ -78,24 +117,21 @@ public sealed class ClaudeUsageProvider : IUsageProvider
                 var retryAfter = RateLimitPolicy.ParseRetryAfter(response, now);
                 var delay = _policy.RecordFailure(now, retryAfter);
                 Log.Warn($"Claude usage throttled (429), backing off {FormatDelay(delay)}");
-                return UsageSnapshot.Failure(Id, SnapshotStatus.RateLimited, "Throttled by Anthropic (429)");
+                return (null, "Throttled by Anthropic (429)");
             }
 
             if (RateLimitPolicy.IsHardAuthFailure(response.StatusCode))
             {
                 _policy.RecordFailure(now);
                 Log.Warn($"Claude usage rejected credentials ({(int)response.StatusCode})");
-                return UsageSnapshot.Failure(
-                    Id,
-                    SnapshotStatus.Unauthorized,
-                    $"Credentials rejected ({(int)response.StatusCode}), run /login");
+                return (null, $"Credentials rejected ({(int)response.StatusCode}), run /login");
             }
 
             if (!response.IsSuccessStatusCode)
             {
                 var delay = _policy.RecordFailure(now);
                 Log.Warn($"Claude usage HTTP {(int)response.StatusCode}, backing off {FormatDelay(delay)}");
-                return UsageSnapshot.Failure(Id, SnapshotStatus.Error, $"HTTP {(int)response.StatusCode}");
+                return (null, $"HTTP {(int)response.StatusCode}");
             }
 
             var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -104,19 +140,19 @@ public sealed class ClaudeUsageProvider : IUsageProvider
             if (windows.Count == 0)
             {
                 _policy.RecordFailure(now);
-                return UsageSnapshot.Failure(Id, SnapshotStatus.Error, "No quota data in response");
+                return (null, "No quota data in response");
             }
 
             _policy.RecordSuccess();
 
-            return new UsageSnapshot
+            return (new UsageSnapshot
             {
                 Provider = Id,
                 Status = SnapshotStatus.Ok,
                 Windows = windows,
                 Plan = credentials.SubscriptionType,
                 UpdatedAt = now
-            };
+            }, null);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -126,7 +162,7 @@ public sealed class ClaudeUsageProvider : IUsageProvider
         {
             var delay = _policy.RecordFailure(now);
             Log.Error($"Claude usage request failed, backing off {FormatDelay(delay)}", ex);
-            return UsageSnapshot.Failure(Id, SnapshotStatus.Error, "Network error");
+            return (null, "Network error");
         }
     }
 
