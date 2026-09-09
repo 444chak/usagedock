@@ -27,8 +27,39 @@ public static class ClaudeLocalUsageReader
 
     public static Result? Read(string? path = null, DateTimeOffset? nowUtc = null)
     {
-        var text = JsonIo.TryReadAllText(path ?? AppPaths.ClaudeDesktopUsageFile);
-        return text is null ? null : Parse(text, nowUtc ?? DateTimeOffset.UtcNow);
+        var resolved = path ?? AppPaths.ClaudeDesktopUsageFile;
+        var text = JsonIo.TryReadAllText(resolved);
+
+        if (text is null)
+        {
+            // Naming the path matters: the failure looks identical whether the file is absent,
+            // unreadable, or simply somewhere else than where this process thinks it is.
+            ReportOnce($"Claude usage history unreadable at {resolved}");
+            return null;
+        }
+
+        var result = Parse(text, nowUtc ?? DateTimeOffset.UtcNow);
+
+        if (result is null)
+        {
+            ReportOnce($"Claude usage history at {resolved} held no usable samples ({text.Length} bytes)");
+        }
+
+        return result;
+    }
+
+    private static string? _lastReport;
+
+    /// <summary>Logs a diagnosis once per distinct problem, so a steady failure is not spam.</summary>
+    private static void ReportOnce(string message)
+    {
+        if (_lastReport == message)
+        {
+            return;
+        }
+
+        _lastReport = message;
+        Log.Warn(message);
     }
 
     internal static Result? Parse(string json, DateTimeOffset nowUtc)

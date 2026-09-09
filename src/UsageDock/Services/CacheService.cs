@@ -15,7 +15,17 @@ public sealed class CacheService
     public CacheService(string? path = null)
     {
         _path = path ?? AppPaths.CacheFile;
-        _cache = JsonIo.TryReadFile<CacheFile>(_path) ?? new CacheFile();
+        var loaded = JsonIo.TryReadFile<CacheFile>(_path);
+        _cache = loaded ?? new CacheFile();
+
+        if (path is null)
+        {
+            // A cache that silently fails to load looks exactly like a provider that has never
+            // succeeded, which is a confusing thing to debug from the outside.
+            Log.Info(loaded is null
+                ? $"No usable cache at {_path}"
+                : $"Cache loaded from {_path}: {string.Join(", ", _cache.Entries.Keys)}");
+        }
     }
 
     public UsageSnapshot? Get(ProviderId provider) =>

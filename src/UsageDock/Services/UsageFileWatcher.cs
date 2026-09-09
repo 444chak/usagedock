@@ -22,6 +22,7 @@ public sealed class UsageFileWatcher : IDisposable
 
     private FileSystemWatcher? _watcher;
     private bool _disposed;
+    private bool _reportedMissingDirectory;
 
     public UsageFileWatcher(string filePath, TimeSpan? attachRetry = null)
     {
@@ -64,6 +65,12 @@ public sealed class UsageFileWatcher : IDisposable
                 var directory = Path.GetDirectoryName(_filePath);
                 if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
                 {
+                    if (!_reportedMissingDirectory)
+                    {
+                        _reportedMissingDirectory = true;
+                        Log.Warn($"Not watching yet, folder not found: {directory}");
+                    }
+
                     return;
                 }
 
