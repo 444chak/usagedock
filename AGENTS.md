@@ -29,6 +29,11 @@ dotnet build -c Release     # must finish with 0 errors and 0 warnings
 dotnet test                 # must be all green
 ```
 
+Tests redirect everything the app writes by setting `USAGEDOCK_DATA_DIR` from a module
+initializer, so a run never touches the log or cache of a real installation. Keep that: the
+concurrency tests provoke write failures on purpose, and those errors landing in a user log look
+like real faults.
+
 **The build fails while the app is running.** MSBuild cannot overwrite `UsageDock.exe` while a
 running instance holds it, and the error is a confusing MSB3027 about `apphost.exe`. Stop it
 first:
@@ -168,3 +173,7 @@ window geometry, window styles, or the hover card:
 - Record the foreground window, click the dock, record it again. It must be unchanged.
 - Check `%APPDATA%\UsageDock\logs\` afterwards. `App` handles dispatcher exceptions and keeps
   running, so a broken binding or a XAML fault shows up only in the log.
+- Every poll logs its outcome per provider, but only when that outcome changes, so a steady state
+  stays quiet while a provider that starts failing becomes visible. Do not remove it: an instance
+  once ran for twenty three minutes showing stale numbers with a log that said nothing at all, and
+  it could not be diagnosed afterwards.
