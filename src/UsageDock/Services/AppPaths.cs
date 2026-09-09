@@ -5,9 +5,28 @@ namespace UsageDock.Services;
 /// </summary>
 public static class AppPaths
 {
-    public static string DataDirectory { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "UsageDock");
+    /// <summary>
+    /// Set this to redirect everything the app writes. The test suite uses it so a test run does
+    /// not scribble into the log and cache of a real installation, and it also allows a portable
+    /// install that keeps its data next to the executable.
+    /// </summary>
+    public const string DataDirectoryVariable = "USAGEDOCK_DATA_DIR";
+
+    public static string DataDirectory { get; } = ResolveDataDirectory();
+
+    private static string ResolveDataDirectory()
+    {
+        var overridden = Environment.GetEnvironmentVariable(DataDirectoryVariable);
+
+        if (!string.IsNullOrWhiteSpace(overridden))
+        {
+            return overridden;
+        }
+
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "UsageDock");
+    }
 
     public static string ConfigFile => Path.Combine(DataDirectory, "config.json");
 

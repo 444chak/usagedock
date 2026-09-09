@@ -24,6 +24,9 @@ public sealed class UsageCoordinator : IAsyncDisposable
     private Timer? _activityTimer;
     private UsageFileWatcher? _claudeWatcher;
 
+    /// <summary>Last logged outcome per provider, so a steady state is not logged every minute.</summary>
+    private readonly Dictionary<ProviderId, string> _lastLogged = [];
+
     public UsageCoordinator(CacheService cache, ActivityService activity)
     {
         _cache = cache;
@@ -63,11 +66,6 @@ public sealed class UsageCoordinator : IAsyncDisposable
         // means a new sample shows up at once instead of waiting for the next poll.
         _claudeWatcher = new UsageFileWatcher(AppPaths.ClaudeDesktopUsageFile);
         _claudeWatcher.Changed += () => _ = PollAsync();
-
-        if (_claudeWatcher.IsWatching)
-        {
-            Log.Info("Watching Claude Desktop usage history for changes");
-        }
     }
 
     public void SetPollInterval(int pollSeconds)
@@ -147,6 +145,8 @@ public sealed class UsageCoordinator : IAsyncDisposable
             snapshot = UsageSnapshot.Failure(provider.Id, SnapshotStatus.Error, "Unexpected error");
         }
 
+        var servedFromCache = false;
+
         if (snapshot.Status == SnapshotStatus.Ok)
         {
             _cache.Store(snapshot);
@@ -155,9 +155,44 @@ public sealed class UsageCoordinator : IAsyncDisposable
         {
             // Keep the numbers on screen, but carry the reason the refresh failed.
             snapshot = cached with { Message = snapshot.Message };
+            servedFromCache = true;
         }
 
+        LogOutcome(provider.Id, snapshot, servedFromCache);
+
         Updated?.Invoke(new ProviderUpdate(provider.Id, snapshot, CurrentActivity(provider.Id)));
+    }
+
+    /// <summary>
+    /// Records what a poll produced, but only when it differs from the last thing recorded for
+    /// that provider. Without this a failing provider is invisible: the app happily shows a
+    /// stale number and the log says nothing at all, which is exactly what made a dead poll
+    /// impossible to diagnose after the fact.
+    /// </summary>
+    private void LogOutcome(ProviderId provider, UsageSnapshot snapshot, bool servedFromCache)
+    {
+        var source = servedFromCache ? "cache" : "live";
+        var detail = snapshot.Status == SnapshotStatus.Ok
+            ? string.Join(", ", snapshot.Windows.Select(w => $"{w.Name} {w.UsedPercent:0.#}%"))
+            : snapshot.Message ?? "no detail";
+
+        var line = $"{provider} {snapshot.Status} ({source}): {detail}";
+
+        if (_lastLogged.TryGetValue(provider, out var previous) && previous == line)
+        {
+            return;
+        }
+
+        _lastLogged[provider] = line;
+
+        if (snapshot.Status == SnapshotStatus.Ok)
+        {
+            Log.Info(line);
+        }
+        else
+        {
+            Log.Warn(line);
+        }
     }
 
     public async ValueTask DisposeAsync()
