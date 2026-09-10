@@ -115,6 +115,15 @@ they must survive. The file is backed up before the first write.
   collide otherwise. See `JsonIo.TryWriteFile`.
 - **`WindowFromPoint` does not honour `HTTRANSPARENT`.** It reports the dock even where the window
   correctly reports itself transparent. To verify hit testing, send `WM_NCHITTEST` directly.
+- **Never trust `Environment.GetFolderPath`.** It returns an empty string when the shell cannot
+  resolve a folder, which happens to a process launched early at Windows login. `Path.Combine`
+  then produces a *relative* path, so the app reads and writes next to its working directory,
+  which for an autostarted process it cannot write to. Because `Log` swallows its own errors, the
+  symptom is an app that runs for hours without a single log line, with one provider working
+  (Codex, under `UserProfile`) and everything under `ApplicationData` silently failing. This cost
+  three reboots and two wrong hypotheses to find. `AppPaths` now falls back through the
+  environment variables and rejects anything not fully qualified; keep it that way, and keep the
+  startup line that prints the resolved roots.
 
 ## Where the data comes from
 

@@ -53,6 +53,7 @@ public partial class App : Application
 
         AppPaths.EnsureCreated();
         Log.Info("UsageDock starting");
+        Log.Info($"Paths: {AppPaths.Describe()}");
 
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
