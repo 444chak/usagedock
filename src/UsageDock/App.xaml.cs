@@ -21,6 +21,7 @@ public partial class App : Application
     private MainWindow _dock = null!;
     private Dictionary<ProviderId, ProviderViewModel> _providers = null!;
     private bool _isDuplicateInstance;
+    private bool _shuttingDown;
     private string _tooltip = string.Empty;
 
     [STAThread]
@@ -71,6 +72,10 @@ public partial class App : Application
         };
 
         _dock = new MainWindow(_config, [_providers[ProviderId.Claude], _providers[ProviderId.Codex]]);
+
+        // The dock is the only window, so closing it means quitting. That is also what lets an
+        // installer end a running copy cleanly with WM_CLOSE during an upgrade.
+        _dock.Closed += (_, _) => RequestShutdown();
         _dock.Show();
 
         var hooks = new HookInstaller();
@@ -79,7 +84,7 @@ public partial class App : Application
         _tray = new TrayMenu(hooks);
         _tray.RefreshRequested += () => _ = _coordinator.RefreshNowAsync();
         _tray.ResetPositionRequested += OnResetPosition;
-        _tray.QuitRequested += () => Dispatcher.BeginInvoke(Shutdown);
+        _tray.QuitRequested += () => Dispatcher.BeginInvoke(RequestShutdown);
 
         _coordinator = new UsageCoordinator(_cache, _activity);
         _coordinator.Updated += OnProviderUpdated;
@@ -110,6 +115,17 @@ public partial class App : Application
         {
             Log.Error("Could not re-point Claude Code hooks", ex);
         }
+    }
+
+    private void RequestShutdown()
+    {
+        if (_shuttingDown)
+        {
+            return;
+        }
+
+        _shuttingDown = true;
+        Shutdown();
     }
 
     private void OnResetPosition()

@@ -18,6 +18,13 @@
     <TieredPGO>true</TieredPGO>
     <StartupObject>UsageDock.App</StartupObject>
     <!--
+      Local builds are 0.0.0 so they always sort below a real release. Windows Installer never
+      replaces a file with a higher version, so a dev build stamped with the default 1.0.0 that
+      was copied into the install folder would silently survive an MSI install.
+      The release workflow overrides this with the tag version.
+    -->
+    <Version>0.0.0</Version>
+    <!--
       WFO0003 is a WinForms analyzer asking for ApplicationHighDpiMode. This is a WPF app that
       only borrows WinForms for the tray icon, so PerMonitorV2 belongs in the manifest.
     -->

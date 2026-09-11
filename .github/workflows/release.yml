@@ -67,6 +67,17 @@ jobs:
           -p:Version=${{ steps.version.outputs.version }}
           -o publish/framework-dependent
 
+      # WiX 6 is pinned: v7 requires accepting a maintenance fee licence, which a build machine
+      # cannot do on anyone's behalf.
+      - name: Install WiX
+        run: |
+          dotnet tool install --global wix --version 6.0.2
+          wix extension add -g WixToolset.Util.wixext/6.0.2
+
+      - name: Build MSI
+        shell: pwsh
+        run: ./installer/build.ps1 -Version ${{ steps.version.outputs.version }} -OutputDir dist
+
       - name: Name the artifacts
         shell: bash
         run: |
@@ -99,17 +110,25 @@ jobs:
 
             | File | Size | Needs |
             | --- | --- | --- |
+            | `UsageDock-${{ steps.version.outputs.version }}-win-x64.msi` | ~55 MB | nothing. **Recommended.** |
             | `UsageDock-${{ steps.version.outputs.version }}-win-x64.exe` | ~140 MB | nothing, just run it |
             | `UsageDock-${{ steps.version.outputs.version }}-win-x64-framework-dependent.exe` | ~0.3 MB | [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) |
 
-            Both are the same app and use about the same memory, around 60 MB. The large one
-            carries the .NET runtime inside it.
+            All three are the same app and use about the same memory, around 55 MB.
 
-            **Put it somewhere permanent before installing the Claude Code hooks**, for example
-            `%LOCALAPPDATA%\Programs\UsageDock\`. The hooks record an absolute path, so running
-            the app from your Downloads folder and later deleting it leaves Claude Code launching
-            something that is not there. If you do move it, start the new copy once and it
-            repairs its own hook entries.
+            **The MSI** installs per user, needs no admin rights, puts the app in
+            `%LOCALAPPDATA%\Programs\UsageDock`, adds a Start Menu entry, shows up in Settings >
+            Apps for uninstall, and upgrades in place over an older version. It is the one to
+            pick unless you specifically want a loose executable.
+
+            **The plain executables** work from anywhere, but put one somewhere permanent before
+            installing the Claude Code hooks. The hooks record an absolute path, so running the
+            app from Downloads and later deleting it leaves Claude Code launching something that
+            is not there. If you do move it, start the new copy once and it repairs its own hook
+            entries.
 
             Then use the tray icon: **Start with Windows**, and **Install Claude Code hooks** for
             the Working / Waiting / Idle indicator.
+
+            None of these are code signed, so SmartScreen will show "Windows protected your PC"
+            the first time. Click *More info*, then *Run anyway*.

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Per-user MSI for UsageDock.
+
+  Installs to %LOCALAPPDATA%\Programs\UsageDock, needs no admin rights and no UAC prompt, and
+  can be removed from Settings > Apps. The payload is the self-contained publish folder, so the
+  .NET runtime is bundled and nothing has to be installed first.
+
+  Deliberately not single-file and not compressed: single-file compression halves the download
+  but decompresses assemblies into memory, and for a widget that sits on screen all day the
+  resident memory matters more than the disk footprint. The MSI cab compresses the folder anyway.
+
+  The install folder is stable on purpose. The Claude Code hooks store an absolute path to the
+  executable, so an app that moves breaks them; one that always installs to the same place does
+  not.
+
+  Build with installer\build.ps1, which publishes the app and passes PublishDir and Version in.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Package Name="UsageDock"
+           Manufacturer="444chak"
+           Version="$(Version)"
+           UpgradeCode="7f0c2a4e-6b1d-4c3a-9e58-1d2f8a6b3c90"
+           Scope="perUser"
+           Language="1033"
+           Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of UsageDock is already installed."
+                  Schedule="afterInstallInitialize" />
+
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- A running copy holds its own files open; ask it to quit before touching them. -->
+    <util:CloseApplication Id="CloseRunningDock"
+                           Target="UsageDock.exe"
+                           CloseMessage="yes"
+                           TerminateProcess="0"
+                           Timeout="10"
+                           RebootPrompt="no" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="UsageDock" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <ComponentGroup Id="Application" Directory="INSTALLFOLDER">
+      <Files Include="$(PublishDir)\**" />
+    </ComponentGroup>
+
+    <!--
+      Per-user components that live in the profile must key on a registry value, not a file.
+      This value is also what Settings > Apps uses to know the product is present.
+    -->
+    <Component Id="StartMenuShortcut" Directory="ProgramMenuFolder">
+      <Shortcut Id="StartMenuEntry"
+                Name="UsageDock"
+                Description="Claude and Codex quota dock"
+                Target="[INSTALLFOLDER]UsageDock.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\UsageDock"
+                     Name="InstallFolder"
+                     Type="string"
+                     Value="[INSTALLFOLDER]"
+                     KeyPath="yes" />
+    </Component>
+
+    <Feature Id="Main" Title="UsageDock" Level="1">
+      <ComponentGroupRef Id="Application" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+
+  </Package>
+</Wix>

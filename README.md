@@ -60,16 +60,31 @@ with the steps above.
 
 | File | Size | Needs |
 | --- | --- | --- |
+| `UsageDock-<version>-win-x64.msi` | ~55 MB | nothing. **Recommended.** |
 | `UsageDock-<version>-win-x64.exe` | ~140 MB | nothing, just run it |
 | `UsageDock-<version>-win-x64-framework-dependent.exe` | ~0.3 MB | .NET 10 Desktop Runtime |
 
-Both are the same app and use about the same memory, around 60 MB; the large one carries the .NET
-runtime inside it. The standalone build is deliberately **not** compressed: compression would
-halve the download to about 63 MB, but assemblies would then be decompressed into memory instead
-of mapped from the bundle, which pushes resident memory from 59 MB to 136 MB. For something that
-sits on screen all day that is the wrong trade.
+All three are the same app and use about the same memory, around 55 MB.
 
-**Do not run it from the build folder, or from Downloads.** The Claude Code hooks record an absolute path to the
+**The MSI** installs per user with no admin prompt into `%LOCALAPPDATA%\Programs\UsageDock`, adds
+a Start Menu entry, appears in Settings > Apps for uninstall, and upgrades in place over an older
+version. It bundles the .NET runtime as a plain folder rather than a compressed single file, on
+purpose: single-file compression halves the download but decompresses assemblies into memory
+instead of mapping them, and pushes resident memory from about 55 MB to 136 MB. For something that
+sits on screen all day that is the wrong trade. Build it locally with:
+
+```bash
+dotnet tool install --global wix --version 6.0.2
+wix extension add -g WixToolset.Util.wixext/6.0.2
+pwsh installer/build.ps1 -Version 0.2.0
+```
+
+WiX 6 is pinned because v7 requires accepting a maintenance fee licence.
+
+None of the builds are code signed, so SmartScreen shows "Windows protected your PC" on first run.
+Click *More info*, then *Run anyway*.
+
+**If you use a plain executable, do not run it from the build folder, or from Downloads.** The Claude Code hooks record an absolute path to the
 executable, so a clean build deletes the target from under Claude Code, and Windows then shows its
 "install .NET" dialog on every hook event. Copy the app somewhere permanent first:
 
