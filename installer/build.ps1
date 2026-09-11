@@ -55,5 +55,8 @@ wix build (Join-Path $PSScriptRoot 'Package.wxs') `
     -o $msi
 if ($LASTEXITCODE -ne 0) { throw "wix build failed" }
 
+# WiX drops its own debug symbols next to the MSI; they are not a release artifact.
+Get-ChildItem $OutputDir -Filter *.wixpdb | Remove-Item -Force
+
 $size = [math]::Round((Get-Item $msi).Length / 1MB, 1)
 Write-Host "Built $msi ($size MB)"
