@@ -49,10 +49,6 @@ public class AppPathsTests
     }
 
     [Fact]
-    public void The_claude_usage_file_sits_under_roaming_appdata() =>
-        Assert.StartsWith(AppPaths.RoamingAppData, AppPaths.ClaudeDesktopUsageFile, StringComparison.OrdinalIgnoreCase);
-
-    [Fact]
     public void Codex_and_claude_homes_sit_under_the_user_profile()
     {
         Assert.StartsWith(AppPaths.UserProfile, AppPaths.ClaudeHome, StringComparison.OrdinalIgnoreCase);
@@ -140,4 +136,80 @@ public class AppPathsFallbackTests
     [InlineData(@"\\server\share\folder", true)]
     public void Only_absolute_paths_are_usable(string? path, bool expected) =>
         Assert.Equal(expected, AppPaths.IsUsable(path));
+}
+
+/// <summary>
+/// Claude Desktop from the Store keeps its files inside its MSIX package rather than in the
+/// real roaming folder, so the usage file has more than one possible home.
+/// </summary>
+public class ClaudeUsageFileSelectionTests
+{
+    private static readonly string Classic = Path.Combine("C:", "u", "AppData", "Roaming", "Claude", "plan-usage-history.json");
+    private static readonly string Store = Path.Combine("C:", "u", "AppData", "Local", "Packages", "Claude_abc", "LocalCache", "Roaming", "Claude", "plan-usage-history.json");
+
+    private static readonly DateTime Older = new(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime Newer = new(2026, 9, 11, 0, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public void The_only_existing_file_wins_even_when_it_is_not_first()
+    {
+        var chosen = AppPaths.ChooseUsageFile(
+            [Classic, Store],
+            fileExists: p => p == Store,
+            lastWriteUtc: _ => Newer,
+            folderExists: _ => true);
+
+        Assert.Equal(Store, chosen);
+    }
+
+    [Fact]
+    public void The_newest_file_wins_when_both_exist()
+    {
+        // A stale classic install must not shadow the live Store package.
+        var chosen = AppPaths.ChooseUsageFile(
+            [Classic, Store],
+            fileExists: _ => true,
+            lastWriteUtc: p => p == Store ? Newer : Older,
+            folderExists: _ => true);
+
+        Assert.Equal(Store, chosen);
+    }
+
+    [Fact]
+    public void Without_a_file_the_first_candidate_with_a_folder_wins()
+    {
+        // Nothing written yet, but the Store package is installed: that is where to watch.
+        var chosen = AppPaths.ChooseUsageFile(
+            [Classic, Store],
+            fileExists: _ => false,
+            lastWriteUtc: _ => Older,
+            folderExists: p => p == Store);
+
+        Assert.Equal(Store, chosen);
+    }
+
+    [Fact]
+    public void With_nothing_at_all_the_first_candidate_is_returned()
+    {
+        var chosen = AppPaths.ChooseUsageFile(
+            [Classic, Store],
+            fileExists: _ => false,
+            lastWriteUtc: _ => Older,
+            folderExists: _ => false);
+
+        Assert.Equal(Classic, chosen);
+    }
+
+    [Fact]
+    public void The_classic_location_is_always_the_first_candidate() =>
+        Assert.StartsWith(AppPaths.RoamingAppData, AppPaths.ClaudeDesktopUsageCandidates().First(), StringComparison.OrdinalIgnoreCase);
+
+    [Fact]
+    public void The_activity_exchange_lives_outside_appdata()
+    {
+        // Hooks run inside the Claude Desktop container, the dock does not, and AppData is
+        // virtualised between them. The profile root is shared.
+        Assert.StartsWith(AppPaths.UserProfile, AppPaths.ActivityDirectory, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("AppData", AppPaths.ActivityDirectory, StringComparison.OrdinalIgnoreCase);
+    }
 }

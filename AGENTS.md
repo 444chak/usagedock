@@ -99,6 +99,36 @@ It must never throw, because that would fail the Claude Code turn it is attached
 the `--usagedock-hook` marker. Users have hooks from other tools in the same `settings.json` and
 they must survive. The file is backed up before the first write.
 
+## The MSIX container, read this before verifying anything
+
+Claude Desktop from the Store is an MSIX package (`Claude_<publisherhash>`). Claude Code runs
+inside it, so **if you are an agent working in Claude Code, your shell is inside that container
+too**, and so is every process you start. Check with the parent chain: `pwsh.exe <- claude.exe`.
+
+Inside the container, the three AppData folders (`Roaming`, `Local`, `LocalLow`) are
+**virtualised**: reads are merged with, and writes redirected to,
+`%LOCALAPPDATA%\Packages\Claude_*\LocalCache\`. The profile root (`.claude`, `.codex`,
+`.usagedock`) and `%LOCALAPPDATA%\Programs` are not virtualised.
+
+What this did to this project, over three reboots:
+
+- Every "verification" run from the agent shell launched the dock *inside* the container, where
+  `%APPDATA%\Claude` appears to exist. Windows launches it *outside* at login, where it does not.
+  The bug only ever reproduced on the user's reboot, never in the agent's tests.
+- Reading `%APPDATA%\UsageDock\logs` from the shell showed the container's copy of the log when
+  one existed, not the real one, so the evidence itself was misleading.
+- The hooks run inside the container and wrote the activity file into the virtualised copy;
+  the real dock read the real folder and stayed Idle forever.
+
+Rules that follow:
+
+- **To launch the dock the way Windows does, go through explorer**:
+  `Start-Process explorer.exe -ArgumentList '"<path>\UsageDock.exe"'`. Confirm with the parent
+  process, which must be `explorer.exe`.
+- Anything a hook writes and the dock reads must live under the profile root, never AppData.
+- If a path "obviously exists" but a Windows-launched process says it does not, you are looking
+  at the virtualised view. Check `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\`.
+
 ## Traps that already cost time
 
 - **`InvariantGlobalization` must stay `false`.** WPF resolves `XmlLanguage` through
@@ -140,7 +170,9 @@ files get large. `auth.json` is probed only for whether a session exists.
    the usage endpoint. Live, with exact reset times. **This path has never been exercised against
    the real API**, because the development machine runs Claude Desktop, which leaves those token
    fields empty. Treat it as unverified.
-2. `%APPDATA%\Claude\plan-usage-history.json`, written by Claude Desktop every fifteen minutes:
+2. `plan-usage-history.json`, written by Claude Desktop every fifteen minutes. Classic install:
+   `%APPDATA%\Claude\`. Store (MSIX) install: `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`.
+   `AppPaths.ClaudeDesktopUsageFile` checks both on every access and the newest wins. Shape:
    `{ "t": <epoch ms>, "org": "...", "u": { "fh": <5h percent>, "sd": <7d percent> } }`. No token,
    no network. This is the source that actually runs day to day.
 

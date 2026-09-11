@@ -3,12 +3,17 @@ namespace UsageDock.Services;
 /// <summary>
 /// Every path the app reads or writes. Nothing here ever holds a secret.
 ///
-/// The two roots are resolved defensively rather than trusted, because
-/// <see cref="Environment.GetFolderPath(Environment.SpecialFolder)"/> returns an empty string
-/// when the shell cannot resolve a folder, which happens to a process launched early at Windows
-/// login. An empty root makes every path below it relative, so the app quietly reads and writes
-/// next to its working directory, which for an autostarted process is a place it cannot write to.
-/// Logging swallows its own errors, so the symptom is an app that runs and says nothing at all.
+/// Two things shape this class. First, <see cref="Environment.GetFolderPath(Environment.SpecialFolder)"/>
+/// returns an empty string when the shell cannot resolve a folder, so every root is taken from
+/// the first candidate that is fully qualified rather than trusted blindly.
+///
+/// Second, Claude Desktop from the Microsoft Store is an MSIX package, and MSIX virtualises the
+/// three AppData folders for every process inside its container. That has two consequences that
+/// each cost a day: the desktop app writes its usage history into the package's own
+/// <c>LocalCache\Roaming</c>, not into the real <c>%APPDATA%</c>; and Claude Code, which runs
+/// inside that same container, launches the hooks inside it too, so anything a hook writes under
+/// AppData lands in the container copy, invisible to a dock started normally by Windows. The
+/// profile root is not virtualised, which is why <c>.claude</c> and <c>.codex</c> are shared.
 /// </summary>
 public static class AppPaths
 {
@@ -19,8 +24,13 @@ public static class AppPaths
     /// </summary>
     public const string DataDirectoryVariable = "USAGEDOCK_DATA_DIR";
 
+    private const string UsageHistoryFileName = "plan-usage-history.json";
+
     /// <summary>Roaming application data, guaranteed to be an absolute path.</summary>
     public static string RoamingAppData { get; } = ResolveRoamingAppData();
+
+    /// <summary>Local application data, guaranteed to be an absolute path.</summary>
+    public static string LocalAppData { get; } = ResolveLocalAppData();
 
     /// <summary>The user profile folder, guaranteed to be an absolute path.</summary>
     public static string UserProfile { get; } = ResolveUserProfile();
@@ -32,7 +42,7 @@ public static class AppPaths
     /// login, the first useful question is which folder the app actually decided on.
     /// </summary>
     public static string Describe() =>
-        $"data={DataDirectory}, appdata={RoamingAppData}, profile={UserProfile}";
+        $"data={DataDirectory}, appdata={RoamingAppData}, profile={UserProfile}, claude={ClaudeDesktopUsageFile}";
 
     internal static string ResolveRoamingAppData() => FirstUsable(
         () => Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -40,6 +50,13 @@ public static class AppPaths
         () => CombineIfRooted(Environment.GetEnvironmentVariable("USERPROFILE"), "AppData", "Roaming"),
         () => CombineIfRooted(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "Roaming"));
+
+    internal static string ResolveLocalAppData() => FirstUsable(
+        () => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        () => Environment.GetEnvironmentVariable("LOCALAPPDATA"),
+        () => CombineIfRooted(Environment.GetEnvironmentVariable("USERPROFILE"), "AppData", "Local"),
+        () => CombineIfRooted(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "Local"));
 
     internal static string ResolveUserProfile() => FirstUsable(
         () => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -124,8 +141,17 @@ public static class AppPaths
 
     public static string LogDirectory => Path.Combine(DataDirectory, "logs");
 
-    /// <summary>Directory holding one small activity file per provider, written by hooks.</summary>
-    public static string ActivityDirectory => Path.Combine(DataDirectory, "activity");
+    /// <summary>
+    /// Directory holding one small activity file per provider, written by hooks and read by the
+    /// dock.
+    ///
+    /// This is the one exchange between a process inside the Claude Desktop container and one
+    /// outside it, so it must not live under AppData: a hook writing there from inside the
+    /// container lands in the package's virtualised copy, and a dock started by Windows reads the
+    /// real folder and sees nothing, forever. The profile root is not virtualised, so a dotfolder
+    /// there, in the same spirit as .claude and .codex, is visible identically to both sides.
+    /// </summary>
+    public static string ActivityDirectory => Path.Combine(UserProfile, ".usagedock", "activity");
 
     public static string ActivityFile(string providerKey) =>
         Path.Combine(ActivityDirectory, providerKey + ".json");
@@ -137,11 +163,96 @@ public static class AppPaths
     public static string ClaudeSettingsFile => Path.Combine(ClaudeHome, "settings.json");
 
     /// <summary>
-    /// Usage history written by Claude Desktop. Read only, and the only Claude quota source on a
-    /// machine that has the desktop app but not the standalone CLI.
+    /// Usage history written by Claude Desktop, read only. Resolved on every access, because the
+    /// desktop app can be the classic installer or the Store package, and the two keep the file
+    /// in different places.
     /// </summary>
-    public static string ClaudeDesktopUsageFile =>
-        Path.Combine(RoamingAppData, "Claude", "plan-usage-history.json");
+    public static string ClaudeDesktopUsageFile => ChooseUsageFile(
+        ClaudeDesktopUsageCandidates().ToList(),
+        File.Exists,
+        p => File.GetLastWriteTimeUtc(p),
+        p => Directory.Exists(Path.GetDirectoryName(p)));
+
+    /// <summary>
+    /// Where the usage history might be, most conventional first: the classic install writes to
+    /// the real roaming folder; the Store package writes to its own virtualised copy under
+    /// Packages. The publisher hash after the underscore is not hard coded, so a re-signed
+    /// package still matches.
+    /// </summary>
+    internal static IEnumerable<string> ClaudeDesktopUsageCandidates()
+    {
+        yield return Path.Combine(RoamingAppData, "Claude", UsageHistoryFileName);
+
+        var packages = Path.Combine(LocalAppData, "Packages");
+        IEnumerable<string> packageDirs;
+
+        try
+        {
+            packageDirs = Directory.Exists(packages)
+                ? Directory.EnumerateDirectories(packages, "Claude_*").OrderBy(static d => d, StringComparer.OrdinalIgnoreCase)
+                : [];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            yield break;
+        }
+
+        foreach (var dir in packageDirs)
+        {
+            yield return Path.Combine(dir, "LocalCache", "Roaming", "Claude", UsageHistoryFileName);
+        }
+    }
+
+    /// <summary>
+    /// Picks the candidate to use. An existing file always wins, the newest one when several
+    /// exist, so an old classic install does not shadow a live Store one. Failing that, the first
+    /// candidate whose folder already exists is the one a watcher can attach to. Failing that, the
+    /// first candidate, so callers always get a path to try.
+    /// </summary>
+    internal static string ChooseUsageFile(
+        IReadOnlyList<string> candidates,
+        Func<string, bool> fileExists,
+        Func<string, DateTime> lastWriteUtc,
+        Func<string, bool> folderExists)
+    {
+        if (candidates.Count == 0)
+        {
+            throw new ArgumentException("At least one candidate is required.", nameof(candidates));
+        }
+
+        string? newest = null;
+        var newestTime = DateTime.MinValue;
+
+        foreach (var candidate in candidates)
+        {
+            if (!fileExists(candidate))
+            {
+                continue;
+            }
+
+            var time = lastWriteUtc(candidate);
+            if (newest is null || time > newestTime)
+            {
+                newest = candidate;
+                newestTime = time;
+            }
+        }
+
+        if (newest is not null)
+        {
+            return newest;
+        }
+
+        foreach (var candidate in candidates)
+        {
+            if (folderExists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return candidates[0];
+    }
 
     public static string CodexHome => Path.Combine(UserProfile, ".codex");
 

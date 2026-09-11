@@ -111,16 +111,22 @@ hooks, open the data folder, quit.
 
 ## Where the data lives
 
-Everything is under `%APPDATA%\UsageDock\`:
+The dock keeps its own files under `%APPDATA%\UsageDock\`:
 
 | File | Contents |
 | --- | --- |
 | `config.json` | monitor, vertical anchor, edge margin, poll interval |
 | `cache.json` | last known good quota reading per provider |
-| `activity\claude.json` | current Working / Waiting / Idle state written by the hooks |
 | `logs\` | daily log, seven days kept |
 
-No secret is ever written here.
+The one file that a hook writes and the dock reads lives elsewhere, at
+`%USERPROFILE%\.usagedock\activity\claude.json`. That is deliberate: Claude Desktop from the
+Store is an MSIX package, Claude Code runs inside its container, and MSIX virtualises AppData for
+everything in there. A hook writing under AppData would land in the package's private copy and a
+dock started by Windows would never see it. The profile root is not virtualised, which is also why
+`.claude` and `.codex` work from both sides.
+
+No secret is ever written to any of these.
 
 ## How each provider is read
 
@@ -143,8 +149,10 @@ store, not in `.credentials.json`, which on those machines is present but holds 
 strings. There is therefore no bearer token to use, and decrypting another application's
 protected credential store is not something this app does.
 
-It does not need to. Claude Desktop writes `%APPDATA%\Claude\plan-usage-history.json`, a series
-of samples roughly every fifteen minutes:
+It does not need to. Claude Desktop writes `plan-usage-history.json`, a series of samples every
+fifteen minutes. The classic installer puts it in `%APPDATA%\Claude\`; the Store package keeps
+it inside its MSIX container at `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`.
+Both locations are checked and the most recently written file wins. Each sample looks like:
 
 ```json
 { "t": 1788899116963, "org": "...", "u": { "fh": 52, "sd": 14 } }
