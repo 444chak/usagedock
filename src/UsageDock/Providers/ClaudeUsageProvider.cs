@@ -68,7 +68,7 @@ public sealed class ClaudeUsageProvider : IUsageProvider
         }
 
         // Local history written by Claude Desktop. No token, no network, nothing to throttle.
-        if (ClaudeLocalUsageReader.Read(_localUsagePath, now) is { Windows.Count: > 0 } local)
+        if (ClaudeLocalUsageReader.Read(_localUsagePath) is { Windows.Count: > 0 } local)
         {
             return new UsageSnapshot
             {

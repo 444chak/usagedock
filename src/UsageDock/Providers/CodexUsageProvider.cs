@@ -75,8 +75,8 @@ public sealed class CodexUsageProvider : IUsageProvider
             Status = SnapshotStatus.Ok,
             Windows = limits.Windows,
             Plan = limits.PlanType ?? auth.AuthMode,
-            // The numbers are as fresh as the last Codex turn, not as fresh as this poll.
-            UpdatedAt = scan.NewestActivityUtc ?? now
+            // The numbers are as fresh as the record they came from, not as fresh as this poll.
+            UpdatedAt = limits.RecordedAt ?? scan.NewestActivityUtc ?? now
         };
     }
 

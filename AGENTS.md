@@ -161,8 +161,16 @@ Both providers prefer local files over the network. Nothing is sent anywhere.
 
 **Codex** reads `%USERPROFILE%\.codex\sessions\**\rollout-*.jsonl`. The CLI records the rate
 limits the server reported into each session rollout as `token_count` events. Only the tail of the
-most recent few files is scanned, backwards, until a `rate_limits` record turns up, because these
-files get large. `auth.json` is probed only for whether a session exists.
+most recent few files is scanned, because these files get large, and the record with the newest
+**line timestamp** wins. Never order rollouts by file time: Codex keeps a session's file open, and
+Windows leaves its last write time at creation until the handle closes, so a long VS Code session
+at 100% looked older than a short one at 80%. `auth.json` is probed only for whether a session
+exists.
+
+**Resets roll over locally.** A reading only describes the window it was taken in, so once a
+window's reset time passes it is shown at 0% without waiting for the source (`QuotaWindow.AsOf`,
+applied when the coordinator publishes). This relies on every source reporting a reset that lies
+after its own reading; keep that true for any new source.
 
 **Claude** has two sources, tried in this order:
 

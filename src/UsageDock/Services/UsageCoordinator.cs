@@ -9,6 +9,9 @@ public sealed record ProviderUpdate(ProviderId Provider, UsageSnapshot? Snapshot
 /// <summary>
 /// Polls every provider on a timer and pushes results out. A failed poll falls back to the last
 /// cached snapshot so the dock keeps showing the most recent known numbers.
+///
+/// Snapshots are cached as read and rolled forward to the current time only when published, so
+/// a window whose reset has passed drops to zero within one poll even when its source is silent.
 /// </summary>
 public sealed class UsageCoordinator : IAsyncDisposable
 {
@@ -82,7 +85,7 @@ public sealed class UsageCoordinator : IAsyncDisposable
         {
             if (_cache.Get(id) is { } cached)
             {
-                Updated?.Invoke(new ProviderUpdate(id, cached, CurrentActivity(id)));
+                Updated?.Invoke(new ProviderUpdate(id, cached.AsOf(DateTimeOffset.UtcNow), CurrentActivity(id)));
             }
         }
     }
@@ -157,6 +160,8 @@ public sealed class UsageCoordinator : IAsyncDisposable
             snapshot = cached with { Message = snapshot.Message };
             servedFromCache = true;
         }
+
+        snapshot = snapshot.AsOf(DateTimeOffset.UtcNow);
 
         LogOutcome(provider.Id, snapshot, servedFromCache);
 

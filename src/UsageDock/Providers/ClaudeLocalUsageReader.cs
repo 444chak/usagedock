@@ -25,7 +25,7 @@ public static class ClaudeLocalUsageReader
 
     private readonly record struct Sample(long TimestampMs, double FiveHour, double SevenDay);
 
-    public static Result? Read(string? path = null, DateTimeOffset? nowUtc = null)
+    public static Result? Read(string? path = null)
     {
         var resolved = path ?? AppPaths.ClaudeDesktopUsageFile;
         var text = JsonIo.TryReadAllText(resolved);
@@ -38,7 +38,7 @@ public static class ClaudeLocalUsageReader
             return null;
         }
 
-        var result = Parse(text, nowUtc ?? DateTimeOffset.UtcNow);
+        var result = Parse(text);
 
         if (result is null)
         {
@@ -62,7 +62,7 @@ public static class ClaudeLocalUsageReader
         Log.Warn(message);
     }
 
-    internal static Result? Parse(string json, DateTimeOffset nowUtc)
+    internal static Result? Parse(string json)
     {
         var samples = ReadSamples(json);
         if (samples.Count == 0)
@@ -78,12 +78,12 @@ public static class ClaudeLocalUsageReader
             QuotaWindow.Create(
                 "5 hour",
                 latest.FiveHour,
-                InferReset(samples, static s => s.FiveHour, FiveHourWindow, nowUtc),
+                InferReset(samples, static s => s.FiveHour, FiveHourWindow),
                 FiveHourWindow),
             QuotaWindow.Create(
                 "Weekly",
                 latest.SevenDay,
-                InferReset(samples, static s => s.SevenDay, SevenDayWindow, nowUtc),
+                InferReset(samples, static s => s.SevenDay, SevenDayWindow),
                 SevenDayWindow)
         };
 
@@ -150,13 +150,16 @@ public static class ClaudeLocalUsageReader
     /// the answer is good to roughly half a sampling interval.
     ///
     /// Returns null when there is nothing to reset, when the run starts before the retained
-    /// history, or when the estimate has already passed, rather than showing a made up value.
+    /// history, or when the estimate falls before the newest sample, rather than showing a made
+    /// up value. An estimate that falls before the newest sample means that sample still carried
+    /// usage after the supposed reset, so the inference is wrong. An estimate that has merely
+    /// passed since is kept: it is what lets the dock roll the window over while Claude Desktop
+    /// is closed and writes nothing.
     /// </summary>
     private static DateTimeOffset? InferReset(
         List<Sample> samples,
         Func<Sample, double> selector,
-        TimeSpan window,
-        DateTimeOffset nowUtc)
+        TimeSpan window)
     {
         if (selector(samples[^1]) <= 0d)
         {
@@ -180,6 +183,6 @@ public static class ClaudeLocalUsageReader
         var openedMs = (samples[index - 1].TimestampMs + samples[index].TimestampMs) / 2;
         var reset = DateTimeOffset.FromUnixTimeMilliseconds(openedMs) + window;
 
-        return reset <= nowUtc ? null : reset;
+        return reset <= DateTimeOffset.FromUnixTimeMilliseconds(samples[^1].TimestampMs) ? null : reset;
     }
 }

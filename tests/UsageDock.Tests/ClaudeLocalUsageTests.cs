@@ -27,7 +27,7 @@ public class ClaudeLocalUsageReaderTests
     public void Reads_the_latest_sample_as_the_two_windows()
     {
         var result = ClaudeLocalUsageReader.Parse(
-            Document((45, 0, 8), (30, 19, 10), (15, 36, 12), (0, 52, 14)), Now);
+            Document((45, 0, 8), (30, 19, 10), (15, 36, 12), (0, 52, 14)));
 
         Assert.NotNull(result);
         Assert.Equal(2, result!.Windows.Count);
@@ -41,7 +41,7 @@ public class ClaudeLocalUsageReaderTests
     [Fact]
     public void Reports_the_age_of_the_newest_sample()
     {
-        var result = ClaudeLocalUsageReader.Parse(Document((60, 5, 5), (20, 9, 6)), Now);
+        var result = ClaudeLocalUsageReader.Parse(Document((60, 5, 5), (20, 9, 6)));
 
         Assert.Equal(Now.AddMinutes(-20), result!.SampledAt);
     }
@@ -49,7 +49,7 @@ public class ClaudeLocalUsageReaderTests
     [Fact]
     public void Window_lengths_are_five_hours_and_seven_days()
     {
-        var result = ClaudeLocalUsageReader.Parse(Document((0, 10, 10)), Now);
+        var result = ClaudeLocalUsageReader.Parse(Document((0, 10, 10)));
 
         Assert.Equal(TimeSpan.FromHours(5), result!.Windows[0].WindowLength);
         Assert.Equal(TimeSpan.FromDays(7), result.Windows[1].WindowLength);
@@ -61,7 +61,7 @@ public class ClaudeLocalUsageReaderTests
         // Usage restarts between the 60 and 45 minute samples, so the window opened at their
         // midpoint and rolls five hours later.
         var result = ClaudeLocalUsageReader.Parse(
-            Document((75, 0, 3), (60, 0, 3), (45, 4, 4), (30, 19, 5), (0, 52, 6)), Now);
+            Document((75, 0, 3), (60, 0, 3), (45, 4, 4), (30, 19, 5), (0, 52, 6)));
 
         var expected = Now.AddMinutes(-52.5).Add(TimeSpan.FromHours(5));
 
@@ -72,7 +72,7 @@ public class ClaudeLocalUsageReaderTests
     public void A_drop_rather_than_a_zero_also_marks_a_new_window()
     {
         var result = ClaudeLocalUsageReader.Parse(
-            Document((60, 62, 8), (45, 5, 8), (30, 13, 9), (0, 20, 9)), Now);
+            Document((60, 62, 8), (45, 5, 8), (30, 13, 9), (0, 20, 9)));
 
         var expected = Now.AddMinutes(-52.5).Add(TimeSpan.FromHours(5));
 
@@ -82,7 +82,7 @@ public class ClaudeLocalUsageReaderTests
     [Fact]
     public void No_reset_is_reported_when_nothing_is_accruing()
     {
-        var result = ClaudeLocalUsageReader.Parse(Document((30, 0, 0), (0, 0, 0)), Now);
+        var result = ClaudeLocalUsageReader.Parse(Document((30, 0, 0), (0, 0, 0)));
 
         Assert.Null(result!.Windows[0].ResetsAt);
         Assert.Null(result.Windows[1].ResetsAt);
@@ -92,20 +92,31 @@ public class ClaudeLocalUsageReaderTests
     public void No_reset_is_reported_when_the_run_starts_before_the_history()
     {
         // Every retained sample is inside the run, so its start cannot be seen.
-        var result = ClaudeLocalUsageReader.Parse(Document((60, 10, 4), (30, 20, 5), (0, 30, 6)), Now);
+        var result = ClaudeLocalUsageReader.Parse(Document((60, 10, 4), (30, 20, 5), (0, 30, 6)));
 
         Assert.Null(result!.Windows[0].ResetsAt);
     }
 
     [Fact]
-    public void An_estimate_that_has_already_passed_is_dropped()
+    public void An_estimate_contradicted_by_the_newest_sample_is_dropped()
     {
-        // The run opened more than five hours ago, so the estimate is in the past and reporting
-        // it would be worse than saying nothing.
+        // The run opened more than five hours before the newest sample, which still shows usage,
+        // so the window cannot have rolled when the inference says it did.
         var result = ClaudeLocalUsageReader.Parse(
-            Document((600, 0, 1), (595, 5, 2), (0, 40, 3)), Now);
+            Document((600, 0, 1), (595, 5, 2), (0, 40, 3)));
 
         Assert.Null(result!.Windows[0].ResetsAt);
+    }
+
+    [Fact]
+    public void An_estimate_that_passed_after_the_newest_sample_is_kept()
+    {
+        // Claude Desktop stopped sampling an hour into the window. The reset it implies has
+        // since gone by, and keeping it is what lets the dock roll the window over.
+        var result = ClaudeLocalUsageReader.Parse(
+            Document((420, 0, 1), (405, 5, 2), (360, 40, 3)));
+
+        Assert.Equal(Now.AddMinutes(-412.5).Add(TimeSpan.FromHours(5)), result!.Windows[0].ResetsAt);
     }
 
     [Fact]
@@ -115,7 +126,7 @@ public class ClaudeLocalUsageReaderTests
             Sample(Ms(Now), 52, 14),
             Sample(Ms(Now.AddMinutes(-30)), 19, 10));
 
-        var result = ClaudeLocalUsageReader.Parse(unordered, Now);
+        var result = ClaudeLocalUsageReader.Parse(unordered);
 
         Assert.Equal(52d, result!.Windows[0].UsedPercent);
         Assert.Equal(Now, result.SampledAt);
@@ -124,7 +135,7 @@ public class ClaudeLocalUsageReaderTests
     [Fact]
     public void Out_of_range_percentages_are_clamped()
     {
-        var result = ClaudeLocalUsageReader.Parse(Document((0, 250, -4)), Now);
+        var result = ClaudeLocalUsageReader.Parse(Document((0, 250, -4)));
 
         Assert.Equal(100d, result!.Windows[0].UsedPercent);
         Assert.Equal(0d, result.Windows[1].UsedPercent);
@@ -139,7 +150,7 @@ public class ClaudeLocalUsageReaderTests
             "{\"u\":{\"fh\":9,\"sd\":9}}",
             Sample(Ms(Now), 31, 7));
 
-        var result = ClaudeLocalUsageReader.Parse(mixed, Now);
+        var result = ClaudeLocalUsageReader.Parse(mixed);
 
         Assert.Equal(31d, result!.Windows[0].UsedPercent);
     }
@@ -149,7 +160,7 @@ public class ClaudeLocalUsageReaderTests
     {
         var partial = Wrap("{\"t\":" + Ms(Now) + ",\"u\":{\"fh\":12}}");
 
-        var result = ClaudeLocalUsageReader.Parse(partial, Now);
+        var result = ClaudeLocalUsageReader.Parse(partial);
 
         Assert.Equal(12d, result!.Windows[0].UsedPercent);
         Assert.Equal(0d, result.Windows[1].UsedPercent);
@@ -162,5 +173,5 @@ public class ClaudeLocalUsageReaderTests
     [InlineData("{\"version\":2,\"samples\":[]}")]
     [InlineData("{\"version\":2,\"samples\":\"nope\"}")]
     public void Unusable_documents_read_as_null(string json) =>
-        Assert.Null(ClaudeLocalUsageReader.Parse(json, Now));
+        Assert.Null(ClaudeLocalUsageReader.Parse(json));
 }

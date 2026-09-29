@@ -92,4 +92,56 @@ public class QuotaWindowTests
     [Fact]
     public void Primary_is_null_without_windows() =>
         Assert.Null(UsageSnapshot.Failure(ProviderId.Claude, SnapshotStatus.Error, "x").Primary);
+
+    private static readonly DateTimeOffset Now = new(2026, 9, 29, 20, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void A_window_whose_reset_has_passed_reads_as_empty()
+    {
+        var window = QuotaWindow.Create("5 hour", 100d, Now.AddMinutes(-1), TimeSpan.FromHours(5));
+
+        var rolled = window.AsOf(Now);
+
+        Assert.Equal(0d, rolled.UsedPercent);
+        Assert.Null(rolled.ResetsAt);
+        Assert.True(rolled.HasRolled);
+        Assert.Equal("reset", rolled.FormatResetIn(Now));
+    }
+
+    [Fact]
+    public void A_window_before_its_reset_is_left_alone()
+    {
+        var window = QuotaWindow.Create("5 hour", 80d, Now.AddMinutes(1));
+
+        Assert.Same(window, window.AsOf(Now));
+    }
+
+    [Fact]
+    public void A_window_without_a_reset_is_never_rolled()
+    {
+        var window = QuotaWindow.Create("5 hour", 80d);
+
+        Assert.Same(window, window.AsOf(Now));
+    }
+
+    [Fact]
+    public void A_snapshot_rolls_only_the_windows_that_reset()
+    {
+        var snapshot = new UsageSnapshot
+        {
+            Provider = ProviderId.Codex,
+            Status = SnapshotStatus.Ok,
+            Windows =
+            [
+                QuotaWindow.Create("5 hour", 100d, Now.AddHours(-1), TimeSpan.FromHours(5)),
+                QuotaWindow.Create("Weekly", 35d, Now.AddDays(3), TimeSpan.FromDays(7))
+            ]
+        };
+
+        var rolled = snapshot.AsOf(Now);
+
+        Assert.Equal(0d, rolled.ShortWindow!.UsedPercent);
+        Assert.Equal(35d, rolled.LongWindow!.UsedPercent);
+        Assert.Same(rolled, rolled.AsOf(Now));
+    }
 }

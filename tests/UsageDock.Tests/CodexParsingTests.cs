@@ -46,19 +46,43 @@ public class CodexRateLimitParserTests
     }
 
     [Fact]
-    public void Supports_the_older_relative_countdown_field()
+    public void The_older_relative_countdown_is_measured_from_the_record()
+    {
+        // Measured from the read instead, the reset would slide back on every poll and a spent
+        // window would never be seen to roll over.
+        var line = """
+        {"timestamp":"2026-09-08T19:00:00Z","rate_limits":{"primary":{"used_percent":50,"window_minutes":300,"resets_in_seconds":600}}}
+        """;
+
+        var result = CodexRateLimitParser.ParseLine(line)!;
+
+        Assert.Equal(new DateTimeOffset(2026, 9, 8, 19, 10, 0, TimeSpan.Zero), result.Windows[0].ResetsAt);
+        Assert.Equal(new DateTimeOffset(2026, 9, 8, 19, 0, 0, TimeSpan.Zero), result.RecordedAt);
+    }
+
+    [Fact]
+    public void A_relative_countdown_without_a_timestamp_falls_back_to_now()
     {
         var line = """
         {"rate_limits":{"primary":{"used_percent":50,"window_minutes":300,"resets_in_seconds":600}}}
         """;
 
         var result = CodexRateLimitParser.ParseLine(line)!;
-        var resets = result.Windows[0].ResetsAt;
+        var delta = result.Windows[0].ResetsAt!.Value - DateTimeOffset.UtcNow;
 
-        Assert.NotNull(resets);
-        var delta = resets!.Value - DateTimeOffset.UtcNow;
         Assert.InRange(delta.TotalSeconds, 570, 630);
     }
+
+    [Theory]
+    [InlineData("""{"timestamp":"2026-09-29T19:34:51.900Z","type":"x"}""", "2026-09-29T19:34:51.900Z")]
+    [InlineData("""{"type":"x","timestamp":"2026-09-29T19:34:51.900Z"}""", null)]
+    [InlineData("""{"timestamp":"garbage"}""", null)]
+    [InlineData("""{"timestamp":"2026""", null)]
+    [InlineData("", null)]
+    public void The_leading_timestamp_is_read_without_parsing_the_line(string line, string? expected) =>
+        Assert.Equal(
+            expected is null ? null : DateTimeOffset.Parse(expected, System.Globalization.CultureInfo.InvariantCulture),
+            CodexRateLimitParser.ReadLineTimestamp(line));
 
     [Fact]
     public void Only_the_windows_that_are_present_come_back()
@@ -139,4 +163,68 @@ public class CodexAuthReaderTests
     [Fact]
     public void Malformed_json_does_not_throw() =>
         Assert.False(CodexAuthReader.Parse("{{{").HasSession);
+}
+
+public sealed class CodexSessionScannerTests : IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "usagedock-codex-" + Guid.NewGuid().ToString("N"));
+
+    public CodexSessionScannerTests() => Directory.CreateDirectory(_root);
+
+    public void Dispose() => Directory.Delete(_root, recursive: true);
+
+    private static string Limits(string timestamp, double used) =>
+        "{\"timestamp\":\"" + timestamp + "\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\","
+        + "\"rate_limits\":{\"primary\":{\"used_percent\":" + used + ",\"window_minutes\":300,\"resets_at\":1790716716}}}}";
+
+    private static string Line(string timestamp) =>
+        "{\"timestamp\":\"" + timestamp + "\",\"type\":\"response_item\",\"payload\":{}}";
+
+    private void Write(string name, DateTime lastWriteUtc, params string[] lines)
+    {
+        var path = Path.Combine(_root, name);
+        File.WriteAllLines(path, lines);
+        File.SetLastWriteTimeUtc(path, lastWriteUtc);
+    }
+
+    [Fact]
+    public void The_newest_record_wins_even_from_a_file_that_looks_older()
+    {
+        // What Windows really reports for a session Codex still holds open: its write time is
+        // stuck at creation, so it ranks below a short session that started later.
+        Write("rollout-long.jsonl", new DateTime(2026, 9, 29, 17, 15, 0, DateTimeKind.Utc),
+            Limits("2026-09-29T17:20:00Z", 10),
+            Limits("2026-09-29T19:34:51Z", 100),
+            Line("2026-09-29T19:34:52Z"));
+        Write("rollout-short.jsonl", new DateTime(2026, 9, 29, 19, 1, 0, DateTimeKind.Utc),
+            Limits("2026-09-29T19:01:03Z", 80));
+
+        var scan = new CodexSessionScanner(_root).Run();
+
+        Assert.Equal(100d, scan.RateLimits!.Windows[0].UsedPercent);
+        Assert.Equal(new DateTimeOffset(2026, 9, 29, 19, 34, 52, TimeSpan.Zero), scan.NewestActivityUtc);
+    }
+
+    [Fact]
+    public void A_file_without_limits_still_counts_as_activity()
+    {
+        Write("rollout-a.jsonl", new DateTime(2026, 9, 29, 10, 0, 0, DateTimeKind.Utc),
+            Limits("2026-09-29T10:00:00Z", 40));
+        Write("rollout-b.jsonl", new DateTime(2026, 9, 29, 11, 0, 0, DateTimeKind.Utc),
+            Line("2026-09-29T12:30:00Z"));
+
+        var scan = new CodexSessionScanner(_root).Run();
+
+        Assert.Equal(40d, scan.RateLimits!.Windows[0].UsedPercent);
+        Assert.Equal(new DateTimeOffset(2026, 9, 29, 12, 30, 0, TimeSpan.Zero), scan.NewestActivityUtc);
+    }
+
+    [Fact]
+    public void A_missing_directory_scans_as_empty()
+    {
+        var scan = new CodexSessionScanner(Path.Combine(_root, "absent")).Run();
+
+        Assert.Null(scan.RateLimits);
+        Assert.Null(scan.NewestActivityUtc);
+    }
 }

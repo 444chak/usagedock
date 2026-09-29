@@ -9,7 +9,8 @@ namespace UsageDock.Providers;
 /// </summary>
 public static class CodexRateLimitParser
 {
-    public sealed record Result(IReadOnlyList<QuotaWindow> Windows, string? PlanType);
+    /// <param name="RecordedAt">When Codex wrote the record, from the line's own timestamp.</param>
+    public sealed record Result(IReadOnlyList<QuotaWindow> Windows, string? PlanType, DateTimeOffset? RecordedAt = null);
 
     /// <summary>
     /// Extracts rate limits from a single rollout line. Returns null when the line carries none.
@@ -24,7 +25,9 @@ public static class CodexRateLimitParser
         try
         {
             using var document = JsonDocument.Parse(line);
-            return FindRateLimits(document.RootElement, depth: 0) is { } limits ? ParseRateLimits(limits) : null;
+            return FindRateLimits(document.RootElement, depth: 0) is { } limits
+                ? ParseRateLimits(limits, ReadTimestamp(document.RootElement))
+                : null;
         }
         catch (JsonException)
         {
@@ -32,17 +35,20 @@ public static class CodexRateLimitParser
         }
     }
 
-    /// <summary>Parses a <c>rate_limits</c> object directly.</summary>
-    public static Result ParseRateLimits(JsonElement limits)
+    /// <summary>
+    /// Parses a <c>rate_limits</c> object directly. <paramref name="recordedAt"/> is when the
+    /// record was written, which a relative countdown is measured from.
+    /// </summary>
+    public static Result ParseRateLimits(JsonElement limits, DateTimeOffset? recordedAt = null)
     {
         var windows = new List<QuotaWindow>();
 
-        if (TryReadWindow(limits, "primary") is { } primary)
+        if (TryReadWindow(limits, "primary", recordedAt) is { } primary)
         {
             windows.Add(primary);
         }
 
-        if (TryReadWindow(limits, "secondary") is { } secondary)
+        if (TryReadWindow(limits, "secondary", recordedAt) is { } secondary)
         {
             windows.Add(secondary);
         }
@@ -54,7 +60,7 @@ public static class CodexRateLimitParser
             plan = planElement.GetString();
         }
 
-        return new Result(windows, plan);
+        return new Result(windows, plan, recordedAt);
     }
 
     /// <summary>Walks the object graph looking for a rate_limits object.</summary>
@@ -81,7 +87,43 @@ public static class CodexRateLimitParser
         return null;
     }
 
-    private static QuotaWindow? TryReadWindow(JsonElement limits, string key)
+    /// <summary>
+    /// The timestamp every rollout line opens with, read without parsing the line. Lines can be
+    /// hundreds of kilobytes of tool output, and only the leading field is wanted.
+    /// </summary>
+    public static DateTimeOffset? ReadLineTimestamp(string line)
+    {
+        const string prefix = "{\"timestamp\":\"";
+
+        if (!line.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var end = line.IndexOf('"', prefix.Length);
+        return end > prefix.Length
+               && DateTimeOffset.TryParse(
+                   line.AsSpan(prefix.Length, end - prefix.Length),
+                   System.Globalization.CultureInfo.InvariantCulture,
+                   System.Globalization.DateTimeStyles.AssumeUniversal,
+                   out var timestamp)
+            ? timestamp
+            : null;
+    }
+
+    /// <summary>The rollout line's own timestamp, when it carries a readable one.</summary>
+    private static DateTimeOffset? ReadTimestamp(JsonElement root) =>
+        root.TryGetProperty("timestamp", out var element)
+        && element.ValueKind == JsonValueKind.String
+        && DateTimeOffset.TryParse(
+            element.GetString(),
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal,
+            out var timestamp)
+            ? timestamp
+            : null;
+
+    private static QuotaWindow? TryReadWindow(JsonElement limits, string key, DateTimeOffset? recordedAt)
     {
         if (!limits.TryGetProperty(key, out var section) || section.ValueKind != JsonValueKind.Object)
         {
@@ -104,12 +146,12 @@ public static class CodexRateLimitParser
             length = TimeSpan.FromMinutes(minutes);
         }
 
-        var resetsAt = ReadResetsAt(section);
+        var resetsAt = ReadResetsAt(section, recordedAt);
 
         return QuotaWindow.Create(DescribeWindow(key, length), used, resetsAt, length);
     }
 
-    private static DateTimeOffset? ReadResetsAt(JsonElement section)
+    private static DateTimeOffset? ReadResetsAt(JsonElement section, DateTimeOffset? recordedAt)
     {
         // Newer Codex builds write an absolute epoch; older ones write a relative countdown.
         if (section.TryGetProperty("resets_at", out var resetsAt)
@@ -125,7 +167,9 @@ public static class CodexRateLimitParser
             && resetsIn.TryGetInt64(out var seconds)
             && seconds >= 0)
         {
-            return DateTimeOffset.UtcNow.AddSeconds(seconds);
+            // Counted from the record, not from this read. Anchoring it to the read would push the
+            // reset back on every poll, so a spent window would never be seen to roll over.
+            return (recordedAt ?? DateTimeOffset.UtcNow).AddSeconds(seconds);
         }
 
         return null;

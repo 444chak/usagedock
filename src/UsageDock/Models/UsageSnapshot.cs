@@ -65,6 +65,12 @@ public sealed record UsageSnapshot
             w => w.Name.Contains(nameFragment, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>The snapshot with every window whose reset has passed rolled over. See <see cref="QuotaWindow.AsOf"/>.</summary>
+    public UsageSnapshot AsOf(DateTimeOffset now) =>
+        Windows.Any(w => w.ResetsAt is { } resets && resets <= now)
+            ? this with { Windows = Windows.Select(w => w.AsOf(now)).ToList() }
+            : this;
+
     public static UsageSnapshot Failure(ProviderId provider, SnapshotStatus status, string message) => new()
     {
         Provider = provider,

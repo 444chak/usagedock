@@ -17,7 +17,28 @@ public sealed record QuotaWindow
     /// <summary>Nominal length of the window, if known.</summary>
     public TimeSpan? WindowLength { get; init; }
 
+    /// <summary>
+    /// True when the window rolled over after the reading was taken, so usage restarted from
+    /// zero and the next reset is not known until the source reports again.
+    /// </summary>
+    public bool HasRolled { get; init; }
+
     public double LeftPercent => Math.Round(100d - UsedPercent, 2);
+
+    /// <summary>
+    /// The window as it stands at <paramref name="now"/>. A reading only describes the window it
+    /// was taken in: once the reset passes, usage is back to zero whether or not the source has
+    /// written anything since. Codex only records limits when it runs a turn, and Claude Desktop
+    /// only samples while it is open, so without this a spent window stays on screen for hours
+    /// after it has actually been renewed.
+    ///
+    /// Every source only ever reports a reset that lies after its own reading, which is what makes
+    /// comparing against the clock alone sufficient.
+    /// </summary>
+    public QuotaWindow AsOf(DateTimeOffset now) =>
+        ResetsAt is { } resets && resets <= now
+            ? this with { UsedPercent = 0d, ResetsAt = null, HasRolled = true }
+            : this;
 
     public static QuotaWindow Create(
         string name,
@@ -48,6 +69,11 @@ public sealed record QuotaWindow
     /// <summary>Human readable countdown to the reset, for example "2h 14m".</summary>
     public string FormatResetIn(DateTimeOffset now)
     {
+        if (HasRolled)
+        {
+            return "reset";
+        }
+
         if (ResetsAt is not { } resets)
         {
             return "unknown";
