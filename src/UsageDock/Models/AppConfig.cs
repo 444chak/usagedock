@@ -11,14 +11,24 @@ public sealed class AppConfig
     [JsonPropertyName("monitorDeviceName")]
     public string MonitorDeviceName { get; set; } = string.Empty;
 
+    /// <summary>Screen edge the dock sits on.</summary>
+    [JsonPropertyName("edge")]
+    [JsonConverter(typeof(JsonStringEnumConverter<DockEdge>))]
+    public DockEdge Edge { get; set; } = DockEdge.Right;
+
     /// <summary>
-    /// Vertical position of the dock centre on the target monitor work area, 0..1.
-    /// 0.5 is vertically centred.
+    /// Position of the dock along its edge on the target monitor work area, 0..1: top to bottom
+    /// on a side edge, left to right on the top edge. 0.5 is centred. The JSON name predates the
+    /// top edge and is kept so existing configs keep their position.
     /// </summary>
     [JsonPropertyName("verticalAnchor")]
-    public double VerticalAnchor { get; set; } = 0.5d;
+    public double Anchor { get; set; } = 0.5d;
 
-    /// <summary>Gap in logical pixels between the dock and the right edge of the work area.</summary>
+    /// <summary>Folded away to a small tab against the screen edge.</summary>
+    [JsonPropertyName("collapsed")]
+    public bool Collapsed { get; set; }
+
+    /// <summary>Gap in logical pixels between the dock and its screen edge.</summary>
     [JsonPropertyName("edgeMargin")]
     public double EdgeMargin { get; set; } = 8d;
 
@@ -33,7 +43,8 @@ public sealed class AppConfig
     /// <summary>Repairs out of range values coming from a hand edited config file.</summary>
     public AppConfig Normalized()
     {
-        VerticalAnchor = double.IsFinite(VerticalAnchor) ? Math.Clamp(VerticalAnchor, 0d, 1d) : 0.5d;
+        Anchor = double.IsFinite(Anchor) ? Math.Clamp(Anchor, 0d, 1d) : 0.5d;
+        Edge = Enum.IsDefined(Edge) ? Edge : DockEdge.Right;
         EdgeMargin = double.IsFinite(EdgeMargin) ? Math.Clamp(EdgeMargin, 0d, 200d) : 8d;
         PollSeconds = Math.Clamp(PollSeconds, 15, 3600);
         MonitorDeviceName ??= string.Empty;

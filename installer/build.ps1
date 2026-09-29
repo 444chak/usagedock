@@ -8,6 +8,7 @@
 
         dotnet tool install --global wix --version 6.0.2
         wix extension add -g WixToolset.Util.wixext/6.0.2
+        wix extension add -g WixToolset.UI.wixext/6.0.2
 
     WiX 6 is pinned on purpose: v7 requires accepting a maintenance fee licence.
 
@@ -49,6 +50,7 @@ Get-ChildItem $publishDir -Filter *.pdb | Remove-Item -Force
 Write-Host "Building MSI..."
 wix build (Join-Path $PSScriptRoot 'Package.wxs') `
     -ext WixToolset.Util.wixext `
+    -ext WixToolset.UI.wixext `
     -d "PublishDir=$publishDir" `
     -d "Version=$Version" `
     -arch x64 `

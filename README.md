@@ -1,11 +1,13 @@
 # UsageDock
 
-A small native Windows 11 dock that shows Claude Code and Codex quota usage on the right edge of
-the screen.
+A small native Windows 11 dock that shows Claude Code and Codex quota usage on the right, left or
+top edge of the screen.
 
 - C# / .NET 10 / WPF. No WebView, no Electron, no Tauri.
 - Always on top, never steals focus, never appears in the taskbar or Alt+Tab.
 - Sized to exactly the visible UI, so it cannot block clicks anywhere else on screen.
+- Hover it for a thin strip: drag the grip to slide it along its edge (or onto another monitor),
+  or click the arrow to fold it into a small tab against the edge. Click the tab to unfold.
 
 ![the dock](docs/dock.png)
 
@@ -68,7 +70,7 @@ All three are the same app and use about the same memory, around 55 MB.
 
 **The MSI** installs per user with no admin prompt into `%LOCALAPPDATA%\Programs\UsageDock`, adds
 a Start Menu entry, appears in Settings > Apps for uninstall, and upgrades in place over an older
-version. It bundles the .NET runtime as a plain folder rather than a compressed single file, on
+version. It ends on a confirmation page with **Launch UsageDock** ticked. It bundles the .NET runtime as a plain folder rather than a compressed single file, on
 purpose: single-file compression halves the download but decompresses assemblies into memory
 instead of mapping them, and pushes resident memory from about 55 MB to 136 MB. For something that
 sits on screen all day that is the wrong trade. Build it locally with:
@@ -121,8 +123,8 @@ clean `dotnet build -c Release` afterwards if you want the framework-dependent o
 
 ## Tray menu
 
-Refresh usage now, reset position, start with Windows, install and uninstall the Claude Code
-hooks, open the data folder, quit.
+Refresh usage now, dock position (right, left or top), fold away, reset position, start with
+Windows, install and uninstall the Claude Code hooks, open the data folder, quit.
 
 ## Where the data lives
 
@@ -257,7 +259,7 @@ unchanged by a click on the dock, and only one window is visible when the card i
 
 The app is `PerMonitorV2` aware. Position and size are computed per monitor in physical pixels
 and applied with `SetWindowPos`, never through WPF `Left`/`Top`, so a secondary display at a
-different scale lands exactly on its own right edge. `WM_DPICHANGED`, `WM_DISPLAYCHANGE` and
+different scale lands exactly on its own edge. `WM_DPICHANGED`, `WM_DISPLAYCHANGE` and
 `WM_SETTINGCHANGE` all trigger a reposition, which covers moving between displays, unplugging a
 monitor, and the taskbar changing the work area.
 

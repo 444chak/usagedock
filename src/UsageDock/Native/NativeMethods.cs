@@ -126,6 +126,10 @@ public static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetCursorPos(out POINT lpPoint);
 
+    /// <summary>Cursor position when the message being handled was posted, packed as two shorts.</summary>
+    [DllImport("user32.dll")]
+    public static extern uint GetMessagePos();
+
     [DllImport("user32.dll")]
     public static extern uint GetDpiForWindow(nint hWnd);
 

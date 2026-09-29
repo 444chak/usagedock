@@ -76,14 +76,17 @@ public partial class App : Application
         // The dock is the only window, so closing it means quitting. That is also what lets an
         // installer end a running copy cleanly with WM_CLOSE during an upgrade.
         _dock.Closed += (_, _) => RequestShutdown();
+        _dock.PlacementChanged += () => _configService.Save(_config);
         _dock.Show();
 
         var hooks = new HookInstaller();
         RepointHooksIfMoved(hooks);
 
-        _tray = new TrayMenu(hooks);
+        _tray = new TrayMenu(hooks, _config);
         _tray.RefreshRequested += () => _ = _coordinator.RefreshNowAsync();
         _tray.ResetPositionRequested += OnResetPosition;
+        _tray.EdgeRequested += edge => Dispatcher.BeginInvoke(() => _dock.SetEdge(edge));
+        _tray.FoldToggleRequested += () => Dispatcher.BeginInvoke(() => _dock.SetCollapsed(!_config.Collapsed));
         _tray.QuitRequested += () => Dispatcher.BeginInvoke(RequestShutdown);
 
         _coordinator = new UsageCoordinator(_cache, _activity);

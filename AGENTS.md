@@ -7,7 +7,7 @@ work on it safely.
 ## What this is
 
 A native Windows 11 dock, C# / .NET 10 / WPF, that shows Claude and Codex quota usage in a small
-always on top strip on the right edge of the screen. Windows only. No WebView, no Electron, no
+always on top strip on the right, left or top edge of the screen. Windows only. No WebView, no Electron, no
 Tauri, no browser engine of any kind. Do not add one.
 
 ## Build and test
@@ -47,7 +47,7 @@ powershell -NoProfile -Command "Stop-Process -Name UsageDock -Force -ErrorAction
 ```
 src/UsageDock/
   App.xaml.cs        entry point, single instance mutex, wiring
-  MainWindow.xaml.cs the dock window: placement, hit testing, hover
+  MainWindow.xaml.cs the dock window: hit testing, hover strip, drag, fold
   Models/            QuotaWindow, UsageSnapshot, AppConfig, ActivityState
   Providers/         reading quotas from Claude and Codex
   Services/          config, cache, logging, backoff, hooks, polling, file watching
@@ -65,6 +65,10 @@ everything still compiles and the tests pass.
 **1. No invisible surface may ever block a click.** This is the single most important property.
 
 - The dock window is exactly the size of the visible pill and nothing more.
+- The hover strip (grip and fold arrow) is **not** reserved space. It is added to the window only
+  while the cursor is over the dock, growing away from the cells so they do not move, and removed
+  as soon as the cursor really leaves. The folded tab is its own exact size. All of the geometry
+  lives in `DockGeometry`, which is pure and tested; keep it there.
 - `AllowsTransparency` is **off**. Do not turn it on to get a soft shadow or a glow. Windows 11
   rounds the corners through DWM instead, and the four unpainted corner pixels are reported as
   `HTTRANSPARENT` from `WM_NCHITTEST` in `MainWindow.HitTestPoint`.
@@ -215,6 +219,9 @@ Codex: no hook system, so the freshness of its session log is the signal. Both g
 Compiling is not evidence. Run the app and check on screen. Worth re-verifying after any change to
 window geometry, window styles, or the hover card:
 
+- Do it for each edge (right, left, top), folded and unfolded, and with the hover strip shown.
+- Drive the mouse with a real move event (`mouse_event` after `SetCursorPos`); `SetCursorPos`
+  alone raises no `WM_MOUSEMOVE`, so WPF never sees the hover and the test proves nothing.
 - Send `WM_NCHITTEST` to the dock at the four corner pixels. Each must answer `HTTRANSPARENT`
   (`-1`). The interior must answer `HTCLIENT` (`1`).
 - Enumerate the visible windows owned by the process. With the card hidden there must be exactly

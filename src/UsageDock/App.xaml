@@ -14,6 +14,8 @@
             <SolidColorBrush x:Key="TextPrimary" Color="#F2F4F8" />
             <SolidColorBrush x:Key="TextSecondary" Color="#98A0AE" />
             <SolidColorBrush x:Key="RingTrack" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="ChromeIdle" Color="#73FFFFFF" />
+            <SolidColorBrush x:Key="ChromeHoverBackground" Color="#1FFFFFFF" />
 
             <Style x:Key="LabelText" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="Segoe UI" />

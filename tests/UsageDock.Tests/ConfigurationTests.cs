@@ -18,7 +18,7 @@ public sealed class ConfigServiceTests : IDisposable
     {
         var config = new ConfigService(ConfigPath).Load();
 
-        Assert.Equal(0.5d, config.VerticalAnchor);
+        Assert.Equal(0.5d, config.Anchor);
         Assert.Equal(8d, config.EdgeMargin);
         Assert.Equal(60, config.PollSeconds);
         Assert.Equal(string.Empty, config.MonitorDeviceName);
@@ -32,7 +32,7 @@ public sealed class ConfigServiceTests : IDisposable
         service.Save(new AppConfig
         {
             MonitorDeviceName = @"\\.\DISPLAY2",
-            VerticalAnchor = 0.25d,
+            Anchor = 0.25d,
             EdgeMargin = 16d,
             PollSeconds = 120,
             StartWithWindows = true
@@ -41,7 +41,7 @@ public sealed class ConfigServiceTests : IDisposable
         var loaded = service.Load();
 
         Assert.Equal(@"\\.\DISPLAY2", loaded.MonitorDeviceName);
-        Assert.Equal(0.25d, loaded.VerticalAnchor);
+        Assert.Equal(0.25d, loaded.Anchor);
         Assert.Equal(16d, loaded.EdgeMargin);
         Assert.Equal(120, loaded.PollSeconds);
         Assert.True(loaded.StartWithWindows);
@@ -66,7 +66,7 @@ public sealed class ConfigServiceTests : IDisposable
 
         var config = new ConfigService(ConfigPath).Load();
 
-        Assert.Equal(1d, config.VerticalAnchor);
+        Assert.Equal(1d, config.Anchor);
         Assert.Equal(0d, config.EdgeMargin);
         Assert.Equal(15, config.PollSeconds);
     }
@@ -87,10 +87,10 @@ public sealed class ConfigServiceTests : IDisposable
     [Fact]
     public void Normalize_repairs_non_finite_values()
     {
-        var config = new AppConfig { VerticalAnchor = double.NaN, EdgeMargin = double.PositiveInfinity }
+        var config = new AppConfig { Anchor = double.NaN, EdgeMargin = double.PositiveInfinity }
             .Normalized();
 
-        Assert.Equal(0.5d, config.VerticalAnchor);
+        Assert.Equal(0.5d, config.Anchor);
         Assert.Equal(8d, config.EdgeMargin);
     }
 
@@ -185,6 +185,47 @@ public sealed class CacheServiceTests : IDisposable
         }
         catch (IOException)
         {
+        }
+    }
+
+    [Fact]
+    public void Edge_and_fold_state_round_trip_as_readable_json()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "usagedock-config-" + Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            var service = new ConfigService(path);
+            service.Save(new AppConfig { Edge = DockEdge.Top, Collapsed = true });
+
+            Assert.Contains("\"Top\"", File.ReadAllText(path));
+
+            var loaded = service.Load();
+            Assert.Equal(DockEdge.Top, loaded.Edge);
+            Assert.True(loaded.Collapsed);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void An_older_config_without_an_edge_stays_on_the_right_and_open()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "usagedock-config-" + Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            File.WriteAllText(path, """{ "verticalAnchor": 0.2 }""");
+
+            var loaded = new ConfigService(path).Load();
+
+            Assert.Equal(DockEdge.Right, loaded.Edge);
+            Assert.False(loaded.Collapsed);
+            Assert.Equal(0.2d, loaded.Anchor);
+        }
+        finally
+        {
+            File.Delete(path);
         }
     }
 }

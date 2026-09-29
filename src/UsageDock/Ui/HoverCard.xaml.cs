@@ -1,11 +1,12 @@
 using System.Windows;
 using System.Windows.Interop;
+using UsageDock.Models;
 using UsageDock.Native;
 
 namespace UsageDock.Ui;
 
 /// <summary>
-/// The detail card shown to the left of the dock on hover.
+/// The detail card shown beside the dock on hover.
 ///
 /// It is deliberately WS_EX_TRANSPARENT, so it is purely informational and can never intercept
 /// a click: the mouse always reaches whatever window sits underneath it.
@@ -51,15 +52,18 @@ public partial class HoverCard : Window
     }
 
     /// <summary>
-    /// Shows the card for a provider, left of the dock and vertically aligned with the hovered
-    /// cell, clamped so it never runs off the monitor work area.
+    /// Shows the card for a provider beside the dock, on the side away from the screen edge,
+    /// aligned with the hovered cell and clamped so it never runs off the monitor work area.
     /// </summary>
     /// <param name="dockBounds">Dock window rectangle, physical pixels.</param>
+    /// <param name="cellCentreX">Horizontal centre of the hovered cell, physical pixels.</param>
     /// <param name="cellCentreY">Vertical centre of the hovered cell, physical pixels.</param>
     public void ShowFor(
         ProviderViewModel provider,
         NativeMethods.RECT dockBounds,
+        int cellCentreX,
         int cellCentreY,
+        DockEdge edge,
         MonitorInfo monitor)
     {
         DataContext = null;
@@ -71,16 +75,21 @@ public partial class HoverCard : Window
             _hwnd = new WindowInteropHelper(this).Handle;
         }
 
-        var scale = monitor.Scale;
         var width = monitor.ToPhysical(LogicalWidth);
-        var height = MeasureHeight(scale);
+        var height = MeasureHeight(monitor.Scale);
+        var gap = monitor.ToPhysical(GapFromDock);
 
-        var x = dockBounds.Left - width - monitor.ToPhysical(GapFromDock);
-        var y = cellCentreY - (height / 2);
+        var (x, y) = edge switch
+        {
+            DockEdge.Left => (dockBounds.Right + gap, cellCentreY - (height / 2)),
+            DockEdge.Top => (cellCentreX - (width / 2), dockBounds.Bottom + gap),
+            _ => (dockBounds.Left - width - gap, cellCentreY - (height / 2))
+        };
 
         // Keep the card fully inside the work area on this monitor.
-        x = Math.Max(monitor.WorkArea.Left, x);
-        y = Math.Clamp(y, monitor.WorkArea.Top, Math.Max(monitor.WorkArea.Top, monitor.WorkArea.Bottom - height));
+        var work = monitor.WorkArea;
+        x = Math.Clamp(x, work.Left, Math.Max(work.Left, work.Right - width));
+        y = Math.Clamp(y, work.Top, Math.Max(work.Top, work.Bottom - height));
 
         WindowInterop.MoveResize(_hwnd, x, y, width, height);
     }

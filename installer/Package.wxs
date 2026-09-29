@@ -14,6 +14,11 @@
   executable, so an app that moves breaks them; one that always installs to the same place does
   not.
 
+  The UI is deliberately short: no welcome page and no licence page, since there is nothing to
+  choose. Double clicking the MSI goes straight to the progress bar and ends on a page that says
+  it worked, with the app ticked to start. Without that last page the installer finished in
+  silence and looked as if it had done nothing.
+
   Build with installer\build.ps1, which publishes the app and passes PublishDir and Version in.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
@@ -69,6 +74,46 @@
                      Value="[INSTALLFOLDER]"
                      KeyPath="yes" />
     </Component>
+
+    <!-- Nothing to modify or repair in place; reinstalling the MSI does the same job. -->
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch UsageDock" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+
+    <!--
+      Started through the shell, as the user, after the installer is done with the files. An
+      upgrade closes the running copy first (CloseRunningDock), so this brings it back.
+    -->
+    <SetProperty Id="WixShellExecTarget" Value="[INSTALLFOLDER]UsageDock.exe"
+                 After="CostFinalize" Sequence="ui" />
+    <CustomAction Id="LaunchApplication"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixShellExec"
+                  Impersonate="yes" />
+
+    <UI Id="UsageDockUI">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Segoe UI" Size="9" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Segoe UI" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Segoe UI" Size="9" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT REMOVE" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
+    </UI>
+
+    <UIRef Id="WixUI_Common" />
 
     <Feature Id="Main" Title="UsageDock" Level="1">
       <ComponentGroupRef Id="Application" />

@@ -15,7 +15,64 @@
         SizeToContent="Manual"
         WindowStartupLocation="Manual">
 
-    <Border BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1" CornerRadius="10">
-        <StackPanel x:Name="ProviderStack" Orientation="Vertical" Margin="0,5" />
+    <Window.Resources>
+        <!-- A chevron pointing right; each use rotates it to face the way it acts. -->
+        <Style x:Key="Chevron" TargetType="Path">
+            <Setter Property="Data" Value="M 0,0 L 3.5,3.5 L 0,7" />
+            <Setter Property="StrokeThickness" Value="1.5" />
+            <Setter Property="StrokeStartLineCap" Value="Round" />
+            <Setter Property="StrokeEndLineCap" Value="Round" />
+            <Setter Property="StrokeLineJoin" Value="Round" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <Setter Property="Stroke" Value="{StaticResource ChromeIdle}" />
+        </Style>
+
+        <!-- Brightens its content on hover, so the controls read as clickable without shouting. -->
+        <Style x:Key="ChromeButton" TargetType="Border">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource ChromeHoverBackground}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="Frame" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1" CornerRadius="10">
+        <Grid>
+            <DockPanel x:Name="Expanded" LastChildFill="True">
+                <!-- Only shown while the cursor is over the dock. See DockGeometry. -->
+                <Grid x:Name="Strip" DockPanel.Dock="Top" Height="16" Visibility="Collapsed"
+                      Background="Transparent" ToolTip="Drag to move">
+                    <Border x:Name="Grip" Width="18" Height="3" CornerRadius="1.5"
+                            Background="{StaticResource ChromeIdle}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Border x:Name="FoldButton" Style="{StaticResource ChromeButton}"
+                            Width="16" Height="16" Margin="0,0,3,0"
+                            HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Cursor="Hand" ToolTip="Fold away">
+                        <Path x:Name="FoldChevron" Style="{StaticResource Chevron}">
+                            <Path.RenderTransform>
+                                <RotateTransform x:Name="FoldRotation" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Border>
+                </Grid>
+
+                <StackPanel x:Name="ProviderStack" Orientation="Vertical" Margin="0,5" />
+            </DockPanel>
+
+            <Border x:Name="Tab" Style="{StaticResource ChromeButton}" CornerRadius="0"
+                    Visibility="Collapsed" Cursor="Hand" ToolTip="Show UsageDock">
+                <Path x:Name="TabChevron" Style="{StaticResource Chevron}">
+                    <Path.RenderTransform>
+                        <RotateTransform x:Name="TabRotation" />
+                    </Path.RenderTransform>
+                </Path>
+            </Border>
+        </Grid>
     </Border>
 </Window>

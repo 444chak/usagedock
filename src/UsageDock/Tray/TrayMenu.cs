@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
+using UsageDock.Models;
 using UsageDock.Services;
 
 namespace UsageDock.Tray;
@@ -15,12 +16,28 @@ public sealed class TrayMenu : IDisposable
     private readonly ToolStripMenuItem _autostartItem;
     private readonly ToolStripMenuItem _installHooksItem;
     private readonly ToolStripMenuItem _uninstallHooksItem;
+    private readonly ToolStripMenuItem _foldItem;
+    private readonly Dictionary<DockEdge, ToolStripMenuItem> _edgeItems = [];
     private readonly HookInstaller _hooks;
+    private readonly AppConfig _config;
     private Icon? _generatedIcon;
 
-    public TrayMenu(HookInstaller hooks)
+    public TrayMenu(HookInstaller hooks, AppConfig config)
     {
         _hooks = hooks;
+        _config = config;
+
+        var positionItem = new ToolStripMenuItem("Dock position");
+        foreach (var edge in (DockEdge[])[DockEdge.Right, DockEdge.Left, DockEdge.Top])
+        {
+            var item = new ToolStripMenuItem(edge.DisplayName());
+            item.Click += (_, _) => EdgeRequested?.Invoke(edge);
+            _edgeItems[edge] = item;
+            positionItem.DropDownItems.Add(item);
+        }
+
+        _foldItem = new ToolStripMenuItem("Fold away");
+        _foldItem.Click += (_, _) => FoldToggleRequested?.Invoke();
 
         _autostartItem = new ToolStripMenuItem("Start with Windows") { CheckOnClick = false };
         _autostartItem.Click += (_, _) => ToggleAutostart();
@@ -47,6 +64,8 @@ public sealed class TrayMenu : IDisposable
         menu.Items.AddRange(
         [
             refreshItem,
+            positionItem,
+            _foldItem,
             resetItem,
             _autostartItem,
             new ToolStripSeparator(),
@@ -78,6 +97,10 @@ public sealed class TrayMenu : IDisposable
 
     public event Action? ResetPositionRequested;
 
+    public event Action<DockEdge>? EdgeRequested;
+
+    public event Action? FoldToggleRequested;
+
     public event Action? QuitRequested;
 
     /// <summary>Short balloon free status update shown in the icon tooltip.</summary>
@@ -89,6 +112,13 @@ public sealed class TrayMenu : IDisposable
 
     private void SyncState()
     {
+        foreach (var (edge, item) in _edgeItems)
+        {
+            item.Checked = _config.Edge == edge;
+        }
+
+        _foldItem.Checked = _config.Collapsed;
+
         _autostartItem.Checked = AutostartService.IsEnabled();
 
         var installed = _hooks.IsInstalled();
