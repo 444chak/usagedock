@@ -1,282 +1,293 @@
+<div align="center">
+
 # UsageDock
 
-A small native Windows 11 dock that shows Claude Code and Codex quota usage on the right, left or
-top edge of the screen.
+**Your Claude and Codex quotas, always in sight, never in the way.**
 
-- C# / .NET 10 / WPF. No WebView, no Electron, no Tauri.
-- Always on top, never steals focus, never appears in the taskbar or Alt+Tab.
-- Sized to exactly the visible UI, so it cannot block clicks anywhere else on screen.
-- Hover it for a thin strip: drag the grip to slide it along its edge (or onto another monitor),
-  or click the arrow to fold it into a small tab against the edge. Click the tab to unfold.
+A tiny native Windows 11 dock that sits on the edge of your screen and shows how much of your
+Claude Code and Codex limits you have left.
 
-![the dock](docs/dock.png)
+[![Latest release](https://img.shields.io/github/v/release/444chak/usagedock?label=download&color=4ade80)](https://github.com/444chak/usagedock/releases/latest)
+![Windows 11](https://img.shields.io/badge/Windows-11-0078D4?logo=windows11&logoColor=white)
+![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
+![No telemetry](https://img.shields.io/badge/network-nothing%20sent-6b7280)
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/license-noncommercial-f59e0b)](LICENSE.md)
 
-## What it shows
+<img src="docs/dock.png" width="412" alt="The dock on the right edge, with the detail card open for Claude" />
 
-The dock is a vertical pill with one cell per provider. Each cell has two concentric rings around
-the provider mark: the **outer ring is the rolling 5 hour window**, the **inner ring is the weekly
-window**. Below sits the 5 hour percentage, and an activity dot rides the top right corner.
+</div>
 
-Hovering a cell opens a detail card to its left with the plan, the activity state, every quota
-window with a progress bar and reset countdown, used and left percentages, and how old the
-reading is. The card disappears when the pointer leaves the dock.
+---
 
-Ring colour follows usage: green under 70%, amber from 70%, red from 90%, applied to each ring
-independently. The provider mark keeps its brand colour rather than the usage colour, so it reads
-as an identity while the rings carry the meaning. The activity dot is blue for Working, amber for
-Waiting for user, and grey for Idle.
+## Highlights
 
-Both marks are vector paths drawn at render time, so there are no image assets to ship and they
-stay crisp at any DPI.
-
-## Requirements
-
-- Windows 10 1607 or later; rounded corners need Windows 11
-- .NET 10 Desktop Runtime to run, .NET 10 SDK to build
-
-## Build
-
-```bash
-dotnet build -c Release
-```
-
-The executable lands at:
-
-```
-src\UsageDock\bin\Release\net10.0-windows\win-x64\UsageDock.exe
-```
-
-Run the tests with:
-
-```bash
-dotnet test
-```
-
-Stop the app before building. MSBuild cannot overwrite a running `UsageDock.exe`, and the failure
-reads as a confusing MSB3027 about `apphost.exe`.
+|   |   |
+| --- | --- |
+| 🎯 **Glanceable** | Two rings per provider: the 5 hour window outside, the weekly window inside. Green, amber at 70%, red at 90%. |
+| 🪶 **Featherweight** | Native C# / WPF. No WebView, no Electron, no browser engine. About 55 MB of memory. |
+| 🖱️ **Never in the way** | Always on top, but never steals focus, never shows in the taskbar or Alt+Tab, and cannot block a click outside what it draws. |
+| ↔️ **Goes where you want** | Right, left or top edge. Drag it along the edge, or onto another monitor. Fold it into a small tab when you need the space. |
+| 🔒 **Private** | Reads local files. No token is ever logged, cached or sent anywhere. |
+| ⚡ **Live activity** | A dot shows when Claude Code is working, waiting for you, or idle. |
 
 ## Install
 
-Grab a build from [Releases](https://github.com/444chak/usagedock/releases), or build it yourself
-with the steps above.
+1. Download **`UsageDock-<version>-win-x64.msi`** from the [latest release](https://github.com/444chak/usagedock/releases/latest).
+2. Run it. No admin rights needed. It ends on a confirmation page with **Launch UsageDock** ticked.
+3. Right click the tray icon and pick **Start with Windows**, and **Install Claude Code hooks** if
+   you want the activity dot. Restart Claude Code afterwards.
+
+> [!NOTE]
+> The builds are not code signed, so SmartScreen says "Windows protected your PC" the first time.
+> Click **More info**, then **Run anyway**.
+
+Upgrading is the same: run the new MSI over the old one. It closes the running dock, replaces it
+in place, and starts it again.
+
+<details>
+<summary><b>Other downloads</b></summary>
+
+<br>
 
 | File | Size | Needs |
 | --- | --- | --- |
 | `UsageDock-<version>-win-x64.msi` | ~55 MB | nothing. **Recommended.** |
-| `UsageDock-<version>-win-x64.exe` | ~140 MB | nothing, just run it |
-| `UsageDock-<version>-win-x64-framework-dependent.exe` | ~0.3 MB | .NET 10 Desktop Runtime |
+| `UsageDock-<version>-win-x64.exe` | ~140 MB | nothing, portable |
+| `UsageDock-<version>-win-x64-framework-dependent.exe` | ~0.3 MB | [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) |
 
-All three are the same app and use about the same memory, around 55 MB.
+All three are the same app. The MSI installs to `%LOCALAPPDATA%\Programs\UsageDock`, adds a Start
+Menu entry, and can be removed from **Settings > Apps**.
 
-**The MSI** installs per user with no admin prompt into `%LOCALAPPDATA%\Programs\UsageDock`, adds
-a Start Menu entry, appears in Settings > Apps for uninstall, and upgrades in place over an older
-version. It ends on a confirmation page with **Launch UsageDock** ticked. It bundles the .NET runtime as a plain folder rather than a compressed single file, on
-purpose: single-file compression halves the download but decompresses assemblies into memory
-instead of mapping them, and pushes resident memory from about 55 MB to 136 MB. For something that
-sits on screen all day that is the wrong trade. Build it locally with:
+If you use a portable executable, put it somewhere permanent before installing the hooks, not in
+Downloads. The hooks store the path to the executable, so deleting it leaves Claude Code calling
+something that is not there. If you do move it, start the new copy once and it repairs its own
+hook entries.
 
-```bash
-dotnet tool install --global wix --version 6.0.2
-wix extension add -g WixToolset.Util.wixext/6.0.2
-pwsh installer/build.ps1 -Version 0.2.0
-```
+</details>
 
-WiX 6 is pinned because v7 requires accepting a maintenance fee licence.
+## Using it
 
-None of the builds are code signed, so SmartScreen shows "Windows protected your PC" on first run.
-Click *More info*, then *Run anyway*.
+**Hover a provider** to open its detail card: plan, activity, every quota window with a progress
+bar and a reset countdown, and how old the reading is.
 
-**If you use a plain executable, do not run it from the build folder, or from Downloads.** The Claude Code hooks record an absolute path to the
-executable, so a clean build deletes the target from under Claude Code, and Windows then shows its
-"install .NET" dialog on every hook event. Copy the app somewhere permanent first:
+<p align="center">
+  <img src="docs/edges.png" width="640" alt="The dock on a side edge, on the top edge, and folded into a tab" />
+</p>
 
-```bash
-dotnet build -c Release
-mkdir -p "$LOCALAPPDATA/Programs/UsageDock"
-cp -r src/UsageDock/bin/Release/net10.0-windows/win-x64/* "$LOCALAPPDATA/Programs/UsageDock/"
-"$LOCALAPPDATA/Programs/UsageDock/UsageDock.exe"
-```
+**Hover the dock** to reveal a thin strip at its start:
 
-Then from the tray icon: **Start with Windows**, and **Install Claude Code hooks** if you want the
-Working / Waiting / Idle indicator on Claude. Restart Claude Code afterwards so it picks the hooks
-up.
+- drag the **grip** to slide the dock along its edge, or across to another monitor;
+- click the **arrow** to fold the dock into a small tab against the edge. Click the tab to bring it back.
 
-If you later move or rebuild the app, start the new copy once. It notices that the installed hooks
-point somewhere else and rewrites its own entries to the current path, leaving hooks belonging to
-other tools alone. Note that this happens for **any** copy you launch, so running a freshly
-downloaded build from your Downloads folder will quietly claim the hooks; start your real copy
-again afterwards to hand them back.
+**Right click the tray icon** for everything else:
 
-To uninstall: tray menu, **Uninstall Claude Code hooks**, untick **Start with Windows**, quit, then
-delete the program folder and `%APPDATA%\UsageDock\`.
-
-### Self-contained build
-
-For a copy that needs no .NET runtime installed at all (about 148 MB, a single file):
-
-```bash
-dotnet publish src/UsageDock/UsageDock.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
-```
-
-Note that this also switches the ordinary `bin/Release` output to a self-contained layout, so run a
-clean `dotnet build -c Release` afterwards if you want the framework-dependent one back.
-
-## Tray menu
-
-Refresh usage now, dock position (right, left or top), fold away, reset position, start with
-Windows, install and uninstall the Claude Code hooks, open the data folder, quit.
-
-## Where the data lives
-
-The dock keeps its own files under `%APPDATA%\UsageDock\`:
-
-| File | Contents |
+| Item | What it does |
 | --- | --- |
-| `config.json` | monitor, vertical anchor, edge margin, poll interval |
-| `cache.json` | last known good quota reading per provider |
-| `logs\` | daily log, seven days kept |
+| Refresh usage now | Polls both providers immediately. Double clicking the icon does the same. |
+| Dock position | Right, left or top edge. |
+| Fold away | Folds or unfolds the dock. |
+| Reset position | Back to the middle of the primary monitor, unfolded. |
+| Start with Windows | Launches the dock at sign in. |
+| Install / Uninstall Claude Code hooks | Turns the activity dot on or off for Claude. |
+| Open data folder | Config, cache and logs. |
 
-The one file that a hook writes and the dock reads lives elsewhere, at
-`%USERPROFILE%\.usagedock\activity\claude.json`. That is deliberate: Claude Desktop from the
-Store is an MSIX package, Claude Code runs inside its container, and MSIX virtualises AppData for
-everything in there. A hook writing under AppData would land in the package's private copy and a
-dock started by Windows would never see it. The profile root is not virtualised, which is also why
-`.claude` and `.codex` work from both sides.
+### Reading the rings
 
-No secret is ever written to any of these.
+| | |
+| --- | --- |
+| Outer ring | Rolling 5 hour window. Its percentage is the number under the ring. |
+| Inner ring | Weekly window. |
+| Colour | Green below 70%, amber from 70%, red from 90%, per ring. |
+| Dot | 🔵 working · 🟡 waiting for you · ⚪ idle |
 
-## How each provider is read
+When a window's reset time passes, the dock drops it to 0% straight away, without waiting for
+Claude or Codex to report again, and the card shows `reset`.
 
-### Claude
+## Where the numbers come from
 
-Claude Code and Claude Desktop keep their sessions in different places, so there are two sources
-and the app takes whichever is available.
+Both providers are read from files already on your machine. Nothing is sent anywhere.
 
-**Source 1, the usage endpoint.** The standalone Claude Code CLI stores an OAuth token in
+| Provider | Source | Freshness |
+| --- | --- | --- |
+| **Codex** | Rate limits the Codex CLI and VS Code extension record in `%USERPROFILE%\.codex\sessions\` | As fresh as your last Codex turn |
+| **Claude** | Usage history Claude Desktop writes to disk | Every 15 minutes while Claude Desktop is open |
+| **Claude** (if available) | Usage endpoint, with the token of the standalone Claude Code CLI | Live |
+
+Quotas are per account, so usage from the web, the browser extensions or another machine is
+included the next time one of these sources refreshes.
+
+<details>
+<summary><b>Claude in detail</b></summary>
+
+<br>
+
+**The usage endpoint.** The standalone Claude Code CLI stores an OAuth token in
 `%USERPROFILE%\.claude\.credentials.json`. When one is there it is read, strictly read only, and
-used as a bearer token for one request. This source is preferred because it is live and carries
-exact reset times. The file is never modified, and the token is never logged, never cached and
-never written anywhere.
+used as a bearer token for one request. It is preferred because it is live and carries exact
+reset times. The file is never modified, and the token is never logged, cached or written
+anywhere. 401 and 403 are reported as a credentials problem rather than retried; 429 honours
+`Retry-After`; anything else backs off exponentially from 30 seconds to 30 minutes.
 
-401 and 403 are reported as a credentials problem rather than retried. 429 honours `Retry-After`.
-Anything else falls back to capped exponential backoff, 30s doubling to a 30 minute ceiling.
-
-**Source 2, the local usage history.** Claude Desktop keeps its session in an encrypted Electron
-store, not in `.credentials.json`, which on those machines is present but holds empty token
-strings. There is therefore no bearer token to use, and decrypting another application's
-protected credential store is not something this app does.
-
-It does not need to. Claude Desktop writes `plan-usage-history.json`, a series of samples every
-fifteen minutes. The classic installer puts it in `%APPDATA%\Claude\`; the Store package keeps
-it inside its MSIX container at `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`.
-Both locations are checked and the most recently written file wins. Each sample looks like:
+**The local usage history.** Claude Desktop keeps its session in an encrypted store, so on those
+machines there is no token to use, and decrypting another application's protected store is not
+something this app does. It does not need to: Claude Desktop writes `plan-usage-history.json`, one
+sample every fifteen minutes. The classic installer keeps it in `%APPDATA%\Claude\`, the Store
+package in `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`. Both are checked and the
+newest wins.
 
 ```json
 { "t": 1788899116963, "org": "...", "u": { "fh": 52, "sd": 14 } }
 ```
 
-`fh` is the five hour window and `sd` the seven day window, both percentages. Reading this needs
-no token and no network, exactly like the Codex path. The `org` identifier is deliberately never
-read.
+`fh` is the five hour window, `sd` the seven day window. The `org` identifier is never read.
 
-The file carries no reset timestamp, but usage only grows inside a window and returns to zero
-when one rolls, so the start of the current run of non zero samples locates the window and the
-reset is one window length later. The true boundary sits between two samples, so the midpoint is
-used and the estimate is good to about half a sampling interval. When the run begins before the
-retained history, or the estimate has already passed, the card says `unknown` rather than showing
-a made up value.
+The history has no reset timestamp. Usage only grows inside a window and drops when one rolls, so
+the start of the current run of non zero samples locates the window, and the reset is one window
+length later, accurate to about half a sampling interval. When that cannot be determined the card
+says `unknown` rather than guessing.
 
-**How fresh the numbers are.** Claude Desktop writes a sample every fifteen minutes exactly, so
-that cadence is the ceiling on freshness and no amount of polling beats it. The app watches the
-file and refreshes the moment a sample lands, rather than waiting for the next poll, and the card
-always states the age of the reading. The usage endpoint, when a token is available, is live and
-has no such limit.
+The file is watched, so a new sample shows up the moment it lands rather than at the next poll.
+Fifteen minutes remains the ceiling: no amount of polling can beat the rate at which Claude Desktop
+samples.
 
-When a refresh fails the last cached reading stays on screen, annotated with the reason. If
-neither source yields anything the dock shows `--`.
+</details>
 
-### Codex
+<details>
+<summary><b>Codex in detail</b></summary>
 
-Codex quotas are read entirely from local files, so no token leaves the machine and there is no
-request to be throttled.
+<br>
 
-The Codex CLI records the rate limits the server reported into each session rollout under
-`%USERPROFILE%\.codex\sessions\**\rollout-*.jsonl`. UsageDock scans the tail of the most recent
-few of those, backwards, for the newest `rate_limits` record, which carries both the short 5 hour
-window and the weekly window.
+Every Codex session writes a rollout file, `rollout-*.jsonl`, and each turn records the rate limits
+the server reported, for both the 5 hour and the weekly window, with exact reset times. UsageDock
+reads the tail of the most recent rollouts and keeps the record with the newest timestamp.
 
-`%USERPROFILE%\.codex\auth.json` is opened read only and probed only for whether a session exists
-and which auth mode is in use. No token value is read out of it.
+It deliberately does not trust file dates for this. Codex keeps a session's file open while the
+session lives, and Windows leaves its modification time at creation until the file closes, so a
+long VS Code session would otherwise look older than a short one started after it.
 
-Because the numbers come from the last Codex turn, the card reports the age of that turn rather
-than the age of the poll.
+`%USERPROFILE%\.codex\auth.json` is opened read only and checked only for whether a session
+exists. No token is read out of it.
 
-## Activity detection
+</details>
 
-Claude Code activity comes from hooks. Install them from the tray menu; they map onto states like
-this:
+## Activity
 
-| Hook event | State |
+Claude Code reports what it is doing through hooks, which you install from the tray menu:
+
+| Hook event | Dot |
 | --- | --- |
-| `SessionStart`, `Stop`, `SessionEnd` | Idle |
-| `UserPromptSubmit`, `PreToolUse`, `PostToolUse` | Working |
-| `Notification` | Waiting for user |
+| `UserPromptSubmit`, `PreToolUse`, `PostToolUse` | 🔵 working |
+| `Notification` | 🟡 waiting for you |
+| `SessionStart`, `Stop`, `SessionEnd` | ⚪ idle |
 
-Each hook runs `UsageDock.exe --usagedock-hook <state>`, which writes a small state file and
-exits before WPF is loaded; measured at 5 to 15 ms, so it adds nothing meaningful to a turn, and
-it can never fail the turn it is attached to. A hook can be missed when a terminal is killed, so
-a stale Working or Waiting record decays back to Idle after five minutes.
+Each hook runs `UsageDock.exe --usagedock-hook <state>`, which writes a tiny file and exits before
+any UI loads, in 5 to 15 ms. It can never fail the Claude Code turn it is attached to. A hook can
+be missed when a terminal is killed, so a stale working or waiting state fades back to idle after
+five minutes.
 
-The installer edits `settings.json` surgically: only entries carrying the `--usagedock-hook`
-marker are added or removed, so hooks belonging to other tools survive, and the original file is
-backed up to `settings.json.usagedock-bak` before the first write.
+Installing the hooks only adds or removes entries marked `--usagedock-hook`. Hooks from other
+tools are left alone, and `settings.json` is backed up to `settings.json.usagedock-bak` before the
+first change.
 
-Codex has no hook system. Its activity is inferred from how recently the CLI wrote to its session
-log, which is a coarse but honest signal; both providers go through one interface, so a better
-Codex signal can replace it without touching the UI.
+Codex has no hooks, so its dot follows how recently a session was written to.
 
-## Why the window cannot block clicks
+## Your data
 
-This is the constraint the whole window design is built around.
+Everything UsageDock keeps lives in `%APPDATA%\UsageDock\`, and none of it holds a secret:
 
-- The dock window is exactly the size of the visible pill, 58 x 156 logical pixels. There is no
-  oversized transparent surface anywhere.
-- `AllowsTransparency` is off. The window is opaque, and Windows 11 rounds the corners through
-  DWM rather than through a transparent layer.
-- The only unpainted pixels are the four rounded corners, and `WM_NCHITTEST` returns
-  `HTTRANSPARENT` for them, so clicks there land on whatever is underneath.
-- The hover card is a separate window, sized to its own content, and carries `WS_EX_TRANSPARENT`,
-  so it is purely informational and every hit test falls straight through it.
-- `WS_EX_NOACTIVATE` plus `WM_MOUSEACTIVATE` returning `MA_NOACTIVATE` mean clicking the dock
-  cannot pull focus away from whatever the user is typing in.
-- `WS_EX_TOOLWINDOW` keeps it out of the taskbar and out of Alt+Tab.
+| File | Contents |
+| --- | --- |
+| `config.json` | edge, position along it, folded or not, monitor, edge margin, poll interval |
+| `cache.json` | last good reading per provider, so the dock is never blank at start up |
+| `logs\` | one log per day, seven days kept |
 
-Verified on a 1920x1200 display at 125% scale: the window measures 73x195 physical, the four
-corner pixels answer `HTTRANSPARENT`, the interior answers `HTCLIENT`, the foreground window is
-unchanged by a click on the dock, and only one window is visible when the card is hidden.
+The activity file the hooks write is the exception, at `%USERPROFILE%\.usagedock\activity\`.
+Claude Code from the Microsoft Store runs inside an MSIX container that redirects AppData, so a
+hook writing there would land in a private copy the dock never sees. The profile root is shared.
 
-## Multi-monitor and DPI
+To pin the dock to a display, set `monitorDeviceName` in `config.json`, for example
+`\\.\DISPLAY2`. If that display is gone, the dock falls back to the primary one.
 
-The app is `PerMonitorV2` aware. Position and size are computed per monitor in physical pixels
-and applied with `SetWindowPos`, never through WPF `Left`/`Top`, so a secondary display at a
-different scale lands exactly on its own edge. `WM_DPICHANGED`, `WM_DISPLAYCHANGE` and
-`WM_SETTINGCHANGE` all trigger a reposition, which covers moving between displays, unplugging a
-monitor, and the taskbar changing the work area.
+**To uninstall**: tray menu, **Uninstall Claude Code hooks**, quit, then remove UsageDock from
+**Settings > Apps** and delete `%APPDATA%\UsageDock\`.
 
-Set `monitorDeviceName` in `config.json` to pin the dock to a display, for example
-`\.\DISPLAY2`. If that display is gone the dock falls back to the primary one.
+## Build from source
 
-## Layout
+Needs the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+
+```bash
+dotnet build -c Release
+dotnet test
+```
+
+The executable lands in `src\UsageDock\bin\Release\net10.0-windows\win-x64\`. Quit the dock before
+building: MSBuild cannot overwrite a running `UsageDock.exe`, and says so with a confusing MSB3027
+about `apphost.exe`.
+
+To build the MSI:
+
+```bash
+dotnet tool install --global wix --version 6.0.2
+wix extension add -g WixToolset.Util.wixext/6.0.2
+wix extension add -g WixToolset.UI.wixext/6.0.2
+pwsh installer/build.ps1 -Version 0.2.2
+```
+
+WiX 6 is pinned because version 7 requires accepting a maintenance fee licence.
+
+<details>
+<summary><b>Under the hood</b></summary>
+
+<br>
+
+**Why it cannot block a click.** The whole window design is built around this.
+
+- The dock window is exactly the size of what it draws. There is no oversized transparent layer.
+- The hover strip is added to the window only while the cursor is over the dock, and removed as
+  soon as it leaves. The folded tab is its own exact size.
+- `AllowsTransparency` is off. Windows 11 rounds the corners through DWM, and the few unpainted
+  corner pixels answer `HTTRANSPARENT` to `WM_NCHITTEST`, so clicks there reach what is underneath.
+- The hover card is a separate window carrying `WS_EX_TRANSPARENT`, so every click falls through it.
+- `WS_EX_NOACTIVATE`, and `MA_NOACTIVATE` in answer to `WM_MOUSEACTIVATE`, mean clicking or
+  dragging the dock never takes focus from what you are typing in.
+- `WS_EX_TOOLWINDOW` keeps it out of the taskbar and Alt+Tab.
+
+Verified at 125% scale on every edge, folded and unfolded: one window of exactly the drawn size,
+transparent corners, focus unchanged by clicks and drags.
+
+**Multi-monitor and DPI.** The app is `PerMonitorV2` aware. Everything is computed per monitor in
+physical pixels and applied with `SetWindowPos`, so a display at a different scale gets an exact
+placement. Display, DPI and work area changes all trigger a reposition.
+
+**Project layout**
 
 ```
-UsageDock.sln
 src/UsageDock/
-  App.xaml, MainWindow.xaml     the dock window
-  Models/                       quota windows, snapshots, config
-  Providers/                    Claude and Codex readers and parsers
-  Services/                     config, cache, logging, backoff, hooks, polling
-  Native/                       Win32 interop, monitors, hit testing
-  Tray/                         notification area icon and menu
-  Ui/                           usage ring, provider cell, hover card
+  App.xaml.cs          entry point, single instance, wiring
+  MainWindow.xaml.cs   the dock: hit testing, hover strip, drag, fold
+  Models/              quota windows, snapshots, config, dock edge
+  Providers/           Claude and Codex readers and parsers
+  Services/            config, cache, logging, backoff, hooks, polling, file watching
+  Native/              Win32 interop, monitors, hit testing
+  Tray/                notification area icon and menu
+  Ui/                  rings, cells, hover card, dock geometry
+installer/             WiX MSI
 tests/UsageDock.Tests/
 ```
+
+Working on the code? Read [`AGENTS.md`](AGENTS.md) first: it lists the invariants and the traps
+that already cost time.
+
+</details>
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE.md). You are free to use, study, modify and share UsageDock
+for any noncommercial purpose, personal or within a nonprofit, school or public body. Selling it,
+bundling it into a paid product, or any other commercial use needs prior written permission:
+[open an issue](https://github.com/444chak/usagedock/issues) to ask.
+
+---
+
+<sub>UsageDock is an independent project, not affiliated with or endorsed by Anthropic or OpenAI.
+Claude and Codex are trademarks of their respective owners.</sub>
