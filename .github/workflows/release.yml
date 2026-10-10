@@ -123,13 +123,15 @@ jobs:
             pick unless you specifically want a loose executable.
 
             **The plain executables** work from anywhere, but put one somewhere permanent before
-            installing the Claude Code hooks. The hooks record an absolute path, so running the
-            app from Downloads and later deleting it leaves Claude Code launching something that
-            is not there. If you do move it, start the new copy once and it repairs its own hook
-            entries.
+            installing the Claude Code hooks or the status line feed. Both record an absolute path,
+            so running the app from Downloads and later deleting it leaves Claude Code launching
+            something that is not there. If you do move it, start the new copy once and it repairs
+            its own entries.
 
-            Then use the tray icon: **Start with Windows**, and **Install Claude Code hooks** for
-            the Working / Waiting / Idle indicator.
+            Then use the tray icon: **Start with Windows**, **Install Claude Code hooks** for
+            the Working / Waiting / Idle indicator, and **Live Claude usage from Claude Code** for
+            Claude quotas that follow every Claude Code response instead of the fifteen minute
+            Claude Desktop samples.
 
             None of these are code signed, so SmartScreen will show "Windows protected your PC"
             the first time. Click *More info*, then *Run anyway*.

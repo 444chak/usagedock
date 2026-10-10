@@ -27,8 +27,9 @@ public partial class App : Application
     [STAThread]
     public static int Main(string[] args)
     {
-        // Hook invocations must be as cheap as possible: no WPF, no window, just a file write.
-        if (HookEntryPoint.TryHandle(args))
+        // Hook and status line invocations must be as cheap as possible: no WPF, no window, just
+        // a file write.
+        if (HookEntryPoint.TryHandle(args) || StatusLineEntryPoint.TryHandle(args))
         {
             return 0;
         }
@@ -80,9 +81,11 @@ public partial class App : Application
         _dock.Show();
 
         var hooks = new HookInstaller();
-        RepointHooksIfMoved(hooks);
+        var statusLine = new StatusLineInstaller();
+        RepointIfMoved("Claude Code hooks", hooks.NeedsRepointing, hooks.Install);
+        RepointIfMoved("Claude Code status line feed", statusLine.NeedsRepointing, statusLine.Install);
 
-        _tray = new TrayMenu(hooks, _config);
+        _tray = new TrayMenu(hooks, statusLine, _config);
         _tray.RefreshRequested += () => _ = _coordinator.RefreshNowAsync();
         _tray.ResetPositionRequested += OnResetPosition;
         _tray.EdgeRequested += edge => Dispatcher.BeginInvoke(() => _dock.SetEdge(edge));
@@ -95,28 +98,29 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Hooks store an absolute path to this executable. If the app has been moved or reinstalled
-    /// since they were written, Claude Code would launch something that is no longer there and
-    /// Windows would pop its "install .NET" dialog on every hook event. Rewriting our own entries
-    /// to the current path costs one file write and only happens when the path actually differs.
+    /// Hooks and the status line feed store an absolute path to this executable. If the app has
+    /// been moved or reinstalled since they were written, Claude Code would launch something that
+    /// is no longer there and Windows would pop its "install .NET" dialog on every event.
+    /// Rewriting our own entries to the current path costs one file write and only happens when
+    /// the path actually differs.
     /// </summary>
-    private static void RepointHooksIfMoved(HookInstaller hooks)
+    private static void RepointIfMoved(string what, Func<bool> needsRepointing, Func<bool> install)
     {
         try
         {
-            if (!hooks.NeedsRepointing())
+            if (!needsRepointing())
             {
                 return;
             }
 
-            if (hooks.Install())
+            if (install())
             {
-                Log.Info("Claude Code hooks re-pointed to the current executable");
+                Log.Info($"{what} re-pointed to the current executable");
             }
         }
         catch (Exception ex)
         {
-            Log.Error("Could not re-point Claude Code hooks", ex);
+            Log.Error($"Could not re-point {what}", ex);
         }
     }
 

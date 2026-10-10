@@ -89,6 +89,7 @@ bar and a reset countdown, and how old the reading is.
 | Reset position | Back to the middle of the primary monitor, unfolded. |
 | Start with Windows | Launches the dock at sign in. |
 | Install / Uninstall Claude Code hooks | Turns the activity dot on or off for Claude. |
+| Live Claude usage from Claude Code | Feeds the dock the quotas Claude Code reports to its status line. |
 | Open data folder | Config, cache and logs. |
 
 ### Reading the rings
@@ -111,6 +112,7 @@ Both providers are read from files already on your machine. Nothing is sent anyw
 | --- | --- | --- |
 | **Codex** | Rate limits the Codex CLI and VS Code extension record in `%USERPROFILE%\.codex\sessions\` | As fresh as your last Codex turn |
 | **Claude** | Usage history Claude Desktop writes to disk | Every 15 minutes while Claude Desktop is open |
+| **Claude** (opt in) | What Claude Code reports to its status line, in a terminal | Every Claude Code response |
 | **Claude** (if available) | Usage endpoint, with the token of the standalone Claude Code CLI | Live |
 
 Quotas are per account, so usage from the web, the browser extensions or another machine is
@@ -149,6 +151,23 @@ says `unknown` rather than guessing.
 The file is watched, so a new sample shows up the moment it lands rather than at the next poll.
 Fifteen minutes remains the ceiling: no amount of polling can beat the rate at which Claude Desktop
 samples.
+
+**The status line feed.** Claude Code passes its status line the five hour and weekly percentages
+with their exact reset times, taken from every API response. **Live Claude usage from Claude
+Code** in the tray menu installs `UsageDock.exe --usagedock-statusline` as that status line, which
+keeps the `rate_limits` object and nothing else of the payload, in
+`%USERPROFILE%\.usagedock\claude-statusline.json`. Of this and the desktop history, whichever
+reading is newer wins, and the desktop history borrows the exact reset times while they still
+apply.
+
+Claude Code allows one status line. If you already have one, UsageDock chains in front of it and
+passes the payload on byte for byte, so your line looks exactly as before; unticking the menu item
+puts your original command back verbatim. Without one, UsageDock draws a short line of its own,
+such as `5h 21% · weekly 3%`.
+
+This only flows while Claude Code runs in a terminal: the Code tab of Claude Desktop does not run
+status lines. Usage from claude.ai or the desktop app shows up at your next Claude Code response,
+or at the next desktop sample, whichever comes first.
 
 </details>
 
@@ -201,14 +220,17 @@ Everything UsageDock keeps lives in `%APPDATA%\UsageDock\`, and none of it holds
 | `cache.json` | last good reading per provider, so the dock is never blank at start up |
 | `logs\` | one log per day, seven days kept |
 
-The activity file the hooks write is the exception, at `%USERPROFILE%\.usagedock\activity\`.
-Claude Code from the Microsoft Store runs inside an MSIX container that redirects AppData, so a
-hook writing there would land in a private copy the dock never sees. The profile root is shared.
+The files Claude Code writes through UsageDock are the exception: the activity files at
+`%USERPROFILE%\.usagedock\activity\` and the status line feed at
+`%USERPROFILE%\.usagedock\claude-statusline.json`. Claude Code from the Microsoft Store runs
+inside an MSIX container that redirects AppData, so writing there would land in a private copy
+the dock never sees. The profile root is shared.
 
 To pin the dock to a display, set `monitorDeviceName` in `config.json`, for example
 `\\.\DISPLAY2`. If that display is gone, the dock falls back to the primary one.
 
-**To uninstall**: tray menu, **Uninstall Claude Code hooks**, quit, then remove UsageDock from
+**To uninstall**: tray menu, **Uninstall Claude Code hooks**, untick **Live Claude usage from
+Claude Code**, quit, then remove UsageDock from
 **Settings > Apps** and delete `%APPDATA%\UsageDock\`.
 
 ## Build from source

@@ -16,15 +16,18 @@ public sealed class TrayMenu : IDisposable
     private readonly ToolStripMenuItem _autostartItem;
     private readonly ToolStripMenuItem _installHooksItem;
     private readonly ToolStripMenuItem _uninstallHooksItem;
+    private readonly ToolStripMenuItem _statusLineItem;
     private readonly ToolStripMenuItem _foldItem;
     private readonly Dictionary<DockEdge, ToolStripMenuItem> _edgeItems = [];
     private readonly HookInstaller _hooks;
+    private readonly StatusLineInstaller _statusLine;
     private readonly AppConfig _config;
     private Icon? _generatedIcon;
 
-    public TrayMenu(HookInstaller hooks, AppConfig config)
+    public TrayMenu(HookInstaller hooks, StatusLineInstaller statusLine, AppConfig config)
     {
         _hooks = hooks;
+        _statusLine = statusLine;
         _config = config;
 
         var positionItem = new ToolStripMenuItem("Dock position");
@@ -47,6 +50,9 @@ public sealed class TrayMenu : IDisposable
 
         _uninstallHooksItem = new ToolStripMenuItem("Uninstall Claude Code hooks");
         _uninstallHooksItem.Click += (_, _) => UninstallHooks();
+
+        _statusLineItem = new ToolStripMenuItem("Live Claude usage from Claude Code") { CheckOnClick = false };
+        _statusLineItem.Click += (_, _) => ToggleStatusLine();
 
         var refreshItem = new ToolStripMenuItem("Refresh usage now");
         refreshItem.Click += (_, _) => RefreshRequested?.Invoke();
@@ -71,6 +77,7 @@ public sealed class TrayMenu : IDisposable
             new ToolStripSeparator(),
             _installHooksItem,
             _uninstallHooksItem,
+            _statusLineItem,
             new ToolStripSeparator(),
             folderItem,
             quitItem
@@ -124,6 +131,8 @@ public sealed class TrayMenu : IDisposable
         var installed = _hooks.IsInstalled();
         _installHooksItem.Enabled = !installed;
         _uninstallHooksItem.Enabled = installed;
+
+        _statusLineItem.Checked = _statusLine.IsInstalled();
     }
 
     private void ToggleAutostart()
@@ -166,6 +175,29 @@ public sealed class TrayMenu : IDisposable
         var ok = _hooks.Uninstall();
         Log.Info($"Hook uninstall result: {ok}");
         Notify(ok ? "Claude Code hooks removed." : "No UsageDock hooks were installed.");
+        SyncState();
+    }
+
+    private void ToggleStatusLine()
+    {
+        if (_statusLine.IsInstalled())
+        {
+            var removed = _statusLine.Uninstall();
+            Log.Info($"Status line feed uninstall result: {removed}");
+            Notify(removed
+                ? "Claude Code status line restored to what it was."
+                : "Could not write Claude Code settings.");
+        }
+        else
+        {
+            var installed = _statusLine.Install();
+            Log.Info($"Status line feed install result: {installed}");
+            Notify(installed
+                ? "Claude usage now follows Claude Code in a terminal, live. "
+                  + "Restart Claude Code to pick it up."
+                : "Could not set up the Claude Code status line, see the log.");
+        }
+
         SyncState();
     }
 

@@ -11,8 +11,10 @@ namespace UsageDock.Providers;
 /// The standalone Claude Code CLI stores an OAuth token in .credentials.json, and when one is
 /// there the usage endpoint is the better source: it is live and it carries exact reset times.
 /// Claude Desktop keeps its session in an encrypted Electron store instead, so on those machines
-/// there is no bearer token to use, and the quotas come from the usage history the desktop app
-/// writes to disk. Either way nothing but the app itself ever sees a credential.
+/// there is no bearer token to use, and the quotas come from what is on disk: the readings Claude
+/// Code hands its status line, and the usage history the desktop app samples every fifteen
+/// minutes. Whichever was taken last wins. Either way nothing but the app itself ever sees a
+/// credential.
 /// </summary>
 public sealed class ClaudeUsageProvider : IUsageProvider
 {
@@ -24,19 +26,22 @@ public sealed class ClaudeUsageProvider : IUsageProvider
     private readonly Func<DateTimeOffset> _now;
     private readonly string? _credentialsPath;
     private readonly string? _localUsagePath;
+    private readonly string? _statusLinePath;
 
     public ClaudeUsageProvider(
         HttpClient http,
         RateLimitPolicy? policy = null,
         Func<DateTimeOffset>? now = null,
         string? credentialsPath = null,
-        string? localUsagePath = null)
+        string? localUsagePath = null,
+        string? statusLinePath = null)
     {
         _http = http;
         _policy = policy ?? new RateLimitPolicy();
         _now = now ?? (() => DateTimeOffset.UtcNow);
         _credentialsPath = credentialsPath;
         _localUsagePath = localUsagePath;
+        _statusLinePath = statusLinePath;
     }
 
     public ProviderId Id => ProviderId.Claude;
@@ -67,8 +72,12 @@ public sealed class ClaudeUsageProvider : IUsageProvider
             }
         }
 
-        // Local history written by Claude Desktop. No token, no network, nothing to throttle.
-        if (ClaudeLocalUsageReader.Read(_localUsagePath) is { Windows.Count: > 0 } local)
+        // Local readings. No token, no network, nothing to throttle.
+        var local = Freshest(
+            ClaudeStatusLineFeed.Read(_statusLinePath),
+            ClaudeLocalUsageReader.Read(_localUsagePath));
+
+        if (local is { Windows.Count: > 0 })
         {
             return new UsageSnapshot
             {
@@ -76,7 +85,7 @@ public sealed class ClaudeUsageProvider : IUsageProvider
                 Status = SnapshotStatus.Ok,
                 Windows = local.Windows,
                 Plan = credentials.SubscriptionType,
-                // As fresh as the last desktop sample, not as fresh as this poll.
+                // As fresh as the reading, not as fresh as this poll.
                 UpdatedAt = local.SampledAt,
                 Message = apiProblem
             };
@@ -93,6 +102,39 @@ public sealed class ClaudeUsageProvider : IUsageProvider
             credentials.HasToken
                 ? "Claude Code session expired, run /login"
                 : "No local Claude usage found");
+    }
+
+    /// <summary>
+    /// Picks the most recent of the two local readings.
+    ///
+    /// When the desktop sample is the newer one its percentages win, but its reset times are only
+    /// inferred, while the status line carries exact ones. A status line reset that still lies
+    /// after the desktop sample belongs to the very window that sample was taken in, so it is
+    /// carried over.
+    /// </summary>
+    internal static ClaudeLocalUsageReader.Result? Freshest(
+        ClaudeLocalUsageReader.Result? statusLine,
+        ClaudeLocalUsageReader.Result? desktop)
+    {
+        if (statusLine is null || desktop is null)
+        {
+            return statusLine ?? desktop;
+        }
+
+        if (statusLine.SampledAt >= desktop.SampledAt)
+        {
+            return statusLine;
+        }
+
+        var windows = desktop.Windows
+            .Select(window => statusLine.Windows.FirstOrDefault(exact =>
+                    exact.WindowLength == window.WindowLength
+                    && exact.ResetsAt > desktop.SampledAt) is { } exact
+                ? window with { ResetsAt = exact.ResetsAt }
+                : window)
+            .ToList();
+
+        return desktop with { Windows = windows };
     }
 
     /// <summary>

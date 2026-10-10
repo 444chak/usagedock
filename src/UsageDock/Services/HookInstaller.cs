@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace UsageDock.Services;
@@ -65,18 +64,38 @@ public sealed class HookInstaller
     /// </summary>
     public bool NeedsRepointing()
     {
-        var text = JsonIo.TryReadAllText(_settingsPath);
+        var commands = OurCommands().ToList();
 
-        if (text is null || !text.Contains(Marker, StringComparison.Ordinal))
+        // Compared per command rather than on the whole file: the status line feed carries the
+        // same path, and a current one there must not hide a stale one here.
+        return commands.Count > 0
+               && commands.Any(c => !c.Contains(_executablePath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private IEnumerable<string> OurCommands()
+    {
+        if (ClaudeSettingsEditor.TryRead(_settingsPath)?["hooks"] is not JsonObject hooks)
         {
-            return false;
+            yield break;
         }
 
-        // The path is JSON escaped in the file, so compare on the escaped form.
-        var escaped = _executablePath.Replace("\\", "\\\\", StringComparison.Ordinal);
+        var commands = hooks
+            .Select(static p => p.Value)
+            .OfType<JsonArray>()
+            .SelectMany(static list => list.OfType<JsonObject>())
+            .Select(static entry => entry["hooks"])
+            .OfType<JsonArray>()
+            .SelectMany(static list => list.OfType<JsonObject>());
 
-        return !text.Contains(escaped, StringComparison.OrdinalIgnoreCase)
-               && !text.Contains(_executablePath, StringComparison.OrdinalIgnoreCase);
+        foreach (var command in commands)
+        {
+            if (command["command"] is JsonValue value
+                && value.TryGetValue<string>(out var text)
+                && text.Contains(Marker, StringComparison.Ordinal))
+            {
+                yield return text;
+            }
+        }
     }
 
     /// <summary>
@@ -214,65 +233,5 @@ public sealed class HookInstaller
         return created;
     }
 
-    /// <summary>Loads, mutates and writes settings.json, keeping a one time backup.</summary>
-    private bool Edit(Func<JsonObject, bool> mutate)
-    {
-        try
-        {
-            var text = JsonIo.TryReadAllText(_settingsPath);
-            JsonObject root;
-
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                root = new JsonObject();
-            }
-            else
-            {
-                root = JsonNode.Parse(text) as JsonObject ?? new JsonObject();
-                BackupOnce(text);
-            }
-
-            if (!mutate(root))
-            {
-                return false;
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
-            var options = new JsonSerializerOptions { WriteIndented = true };
-            var temp = _settingsPath + ".usagedock.tmp";
-            File.WriteAllText(temp, root.ToJsonString(options));
-
-            if (File.Exists(_settingsPath))
-            {
-                File.Replace(temp, _settingsPath, destinationBackupFileName: null, ignoreMetadataErrors: true);
-            }
-            else
-            {
-                File.Move(temp, _settingsPath);
-            }
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Log.Error("Failed editing Claude Code settings", ex);
-            return false;
-        }
-    }
-
-    private void BackupOnce(string original)
-    {
-        try
-        {
-            var backup = _settingsPath + ".usagedock-bak";
-            if (!File.Exists(backup))
-            {
-                File.WriteAllText(backup, original);
-            }
-        }
-        catch (IOException)
-        {
-            // A missing backup must not block the edit.
-        }
-    }
+    private bool Edit(Func<JsonObject, bool> mutate) => ClaudeSettingsEditor.Edit(_settingsPath, mutate);
 }

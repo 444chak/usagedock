@@ -103,6 +103,14 @@ It must never throw, because that would fail the Claude Code turn it is attached
 the `--usagedock-hook` marker. Users have hooks from other tools in the same `settings.json` and
 they must survive. The file is backed up before the first write.
 
+The same goes for the status line, with one twist: Claude Code allows a single one, so
+`StatusLineInstaller` chains in front of an existing command instead of replacing it, keeping that
+command verbatim inside its own so uninstall can restore it exactly. `--usagedock-statusline`
+follows the hook rules of invariant 5: no WPF, never throws, and in `--tee` mode it writes the
+payload through byte for byte before doing anything else, because the other status line is
+waiting on it. The chained command falls back to `cat` if the executable is gone, so removing the
+app never blanks the user's status line.
+
 ## The MSIX container, read this before verifying anything
 
 Claude Desktop from the Store is an MSIX package (`Claude_<publisherhash>`). Claude Code runs
@@ -179,21 +187,29 @@ after its own reading; keep that true for any new source.
 **Claude** has two sources, tried in this order:
 
 1. `%USERPROFILE%\.claude\.credentials.json`, the OAuth token of the standalone CLI, used against
-   the usage endpoint. Live, with exact reset times. **This path has never been exercised against
-   the real API**, because the development machine runs Claude Desktop, which leaves those token
-   fields empty. Treat it as unverified.
-2. `plan-usage-history.json`, written by Claude Desktop every fifteen minutes. Classic install:
-   `%APPDATA%\Claude\`. Store (MSIX) install: `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`.
-   `AppPaths.ClaudeDesktopUsageFile` checks both on every access and the newest wins. Shape:
-   `{ "t": <epoch ms>, "org": "...", "u": { "fh": <5h percent>, "sd": <7d percent> } }`. No token,
-   no network. This is the source that actually runs day to day.
+   the usage endpoint. Live, with exact reset times. Claude Desktop leaves those token fields
+   empty; running the standalone `claude` in a terminal fills them. That first happened on the
+   development machine on 2026-10-11 and the endpoint answered with live numbers, but it is still
+   the least exercised path.
+2. The local readings, whichever is newer (`ClaudeUsageProvider.Freshest`):
+   - `%USERPROFILE%\.usagedock\claude-statusline.json`, the `rate_limits` object Claude Code hands
+     its status line, stored by `--usagedock-statusline` (opt in, tray menu). Exact resets,
+     refreshed on every response, but only while Claude Code runs in a terminal: **the Code tab of
+     Claude Desktop never runs a status line**, verified on 2026-10-11. Nothing else of the
+     payload is stored; it names the session, the working directory and the transcript.
+   - `plan-usage-history.json`, written by Claude Desktop every fifteen minutes. Classic install:
+     `%APPDATA%\Claude\`. Store (MSIX) install: `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`.
+     `AppPaths.ClaudeDesktopUsageFile` checks both on every access and the newest wins. Shape:
+     `{ "t": <epoch ms>, "org": "...", "u": { "fh": <5h percent>, "sd": <7d percent> } }`. No token,
+     no network. This is the source that actually runs day to day.
 
 The history carries no reset timestamp. `ClaudeLocalUsageReader.InferReset` derives one: usage
 only grows inside a window and drops when one rolls, so the start of the current run of non zero
 samples locates the window. When it cannot be determined, report nothing rather than a guess.
 
-Fifteen minutes is a hard ceiling on Claude freshness. `UsageFileWatcher` removes the additional
-polling lag but cannot beat the sampling rate. Do not add faster polling hoping to improve it.
+Fifteen minutes is a hard ceiling on the freshness of the desktop history. `UsageFileWatcher`
+removes the additional polling lag but cannot beat the sampling rate. Do not add faster polling
+hoping to improve it; the status line feed is the way past it.
 
 ## Activity states
 

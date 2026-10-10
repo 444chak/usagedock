@@ -42,7 +42,7 @@ public static class AppPaths
     /// login, the first useful question is which folder the app actually decided on.
     /// </summary>
     public static string Describe() =>
-        $"data={DataDirectory}, appdata={RoamingAppData}, profile={UserProfile}, claude={ClaudeDesktopUsageFile}";
+        $"data={DataDirectory}, appdata={RoamingAppData}, profile={UserProfile}, claude={ClaudeDesktopUsageFile}, statusline={ClaudeStatusLineFile}";
 
     internal static string ResolveRoamingAppData() => FirstUsable(
         () => Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -155,6 +155,13 @@ public static class AppPaths
 
     public static string ActivityFile(string providerKey) =>
         Path.Combine(ActivityDirectory, providerKey + ".json");
+
+    /// <summary>
+    /// Latest quotas Claude Code passed to its status line. Written from inside the Claude Desktop
+    /// container just like the activity files, so it lives under the profile root for the same
+    /// reason.
+    /// </summary>
+    public static string ClaudeStatusLineFile => Path.Combine(UserProfile, ".usagedock", "claude-statusline.json");
 
     public static string ClaudeHome => Path.Combine(UserProfile, ".claude");
 

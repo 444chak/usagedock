@@ -26,6 +26,7 @@ public sealed class UsageCoordinator : IAsyncDisposable
     private Timer? _usageTimer;
     private Timer? _activityTimer;
     private UsageFileWatcher? _claudeWatcher;
+    private UsageFileWatcher? _statusLineWatcher;
 
     /// <summary>Last logged outcome per provider, so a steady state is not logged every minute.</summary>
     private readonly Dictionary<ProviderId, string> _lastLogged = [];
@@ -69,6 +70,11 @@ public sealed class UsageCoordinator : IAsyncDisposable
         // means a new sample shows up at once instead of waiting for the next poll.
         _claudeWatcher = new UsageFileWatcher(AppPaths.ClaudeDesktopUsageFile);
         _claudeWatcher.Changed += () => _ = PollAsync();
+
+        // The status line feed is written whenever Claude Code reports new limits, which is the
+        // whole point of it, so it gets the same treatment.
+        _statusLineWatcher = new UsageFileWatcher(AppPaths.ClaudeStatusLineFile);
+        _statusLineWatcher.Changed += () => _ = PollAsync();
     }
 
     public void SetPollInterval(int pollSeconds)
@@ -215,6 +221,7 @@ public sealed class UsageCoordinator : IAsyncDisposable
         }
 
         _claudeWatcher?.Dispose();
+        _statusLineWatcher?.Dispose();
 
         _http.Dispose();
         _cts.Dispose();

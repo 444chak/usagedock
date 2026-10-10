@@ -4,7 +4,8 @@ using UsageDock.Models;
 namespace UsageDock.Providers;
 
 /// <summary>
-/// Parses the payload of the Claude OAuth usage endpoint into quota windows.
+/// Parses Claude quota windows, from the OAuth usage endpoint or from the <c>rate_limits</c> object
+/// Claude Code hands its status line; both share the same shape.
 /// Unknown or missing sections are skipped rather than treated as errors, so a shape change
 /// upstream degrades to fewer windows instead of a hard failure.
 /// </summary>
@@ -62,8 +63,9 @@ public static class ClaudeUsageParser
     {
         percent = 0d;
 
-        // "utilization" is the documented field; the others are defensive fallbacks.
-        foreach (var name in (string[])["utilization", "used_percent", "usedPercent", "percent_used"])
+        // "utilization" is what the usage endpoint sends and "used_percentage" what Claude Code
+        // hands its status line; the others are defensive fallbacks.
+        foreach (var name in (string[])["utilization", "used_percentage", "used_percent", "usedPercent", "percent_used"])
         {
             if (section.TryGetProperty(name, out var element)
                 && element.ValueKind == JsonValueKind.Number
