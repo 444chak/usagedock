@@ -114,6 +114,16 @@ public sealed class HookInstallerTests : IDisposable
         Assert.Equal(expected, command);
     }
 
+    [Theory]
+    [InlineData(@"C:\src\usagedock\src\UsageDock\bin\Release\net10.0-windows\win-x64\UsageDock.exe", true)]
+    [InlineData(@"C:\src\usagedock\src\UsageDock\bin\Debug\net10.0-windows\win-x64\UsageDock.exe", true)]
+    [InlineData(@"C:\Users\me\AppData\Local\Programs\UsageDock\UsageDock.exe", false)]
+    [InlineData(@"D:\Tools\UsageDock.exe", false)]
+    public void A_build_folder_is_recognised_so_it_does_not_take_over_the_hooks(string exe, bool expected)
+    {
+        Assert.Equal(expected, new HookInstaller(SettingsPath, exe).IsRunningFromBuildOutput());
+    }
+
     public void Dispose()
     {
         try

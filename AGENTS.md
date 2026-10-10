@@ -137,6 +137,9 @@ Rules that follow:
 - **To launch the dock the way Windows does, go through explorer**:
   `Start-Process explorer.exe -ArgumentList '"<path>\UsageDock.exe"'`. Confirm with the parent
   process, which must be `explorer.exe`.
+- A copy started from `bin\Debug` or `bin\Release` deliberately does not re-point the Claude Code
+  hooks or the status line feed at startup. It used to, and launching a build to verify something
+  silently moved the installed copy's entries into the build folder.
 - Anything a hook writes and the dock reads must live under the profile root, never AppData.
 - If a path "obviously exists" but a Windows-launched process says it does not, you are looking
   at the virtualised view. Check `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\`.

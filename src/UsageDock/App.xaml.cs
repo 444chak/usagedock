@@ -82,8 +82,18 @@ public partial class App : Application
 
         var hooks = new HookInstaller();
         var statusLine = new StatusLineInstaller();
-        RepointIfMoved("Claude Code hooks", hooks.NeedsRepointing, hooks.Install);
-        RepointIfMoved("Claude Code status line feed", statusLine.NeedsRepointing, statusLine.Install);
+        if (hooks.IsRunningFromBuildOutput())
+        {
+            // A build started to try something out must not take over the entries of the
+            // installed copy: they would point into bin\ until the installed copy next started,
+            // and a clean build in between leaves Claude Code calling nothing.
+            Log.Info("Running from a build folder, leaving Claude Code entries pointing where they are");
+        }
+        else
+        {
+            RepointIfMoved("Claude Code hooks", hooks.NeedsRepointing, hooks.Install);
+            RepointIfMoved("Claude Code status line feed", statusLine.NeedsRepointing, statusLine.Install);
+        }
 
         _tray = new TrayMenu(hooks, statusLine, _config);
         _tray.RefreshRequested += () => _ = _coordinator.RefreshNowAsync();
