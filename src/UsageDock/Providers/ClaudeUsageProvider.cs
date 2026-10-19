@@ -21,12 +21,20 @@ public sealed class ClaudeUsageProvider : IUsageProvider
     private const string UsageEndpoint = "https://api.anthropic.com/api/oauth/usage";
     private const string OAuthBeta = "oauth-2025-04-20";
 
+    /// <summary>
+    /// The usage endpoint answers 429 when asked every minute: on the development machine every
+    /// other call was refused. Between calls the last answer stays on screen, so asking less
+    /// often costs little, and the status line feed is the way to fresher numbers.
+    /// </summary>
+    public static readonly TimeSpan MinApiInterval = TimeSpan.FromMinutes(5);
+
     private readonly HttpClient _http;
     private readonly RateLimitPolicy _policy;
     private readonly Func<DateTimeOffset> _now;
     private readonly string? _credentialsPath;
     private readonly string? _localUsagePath;
     private readonly string? _statusLinePath;
+    private DateTimeOffset _lastApiAttempt = DateTimeOffset.MinValue;
 
     public ClaudeUsageProvider(
         HttpClient http,
@@ -52,10 +60,15 @@ public sealed class ClaudeUsageProvider : IUsageProvider
         var credentials = ClaudeCredentialsReader.Read(_credentialsPath);
         string? apiProblem = null;
 
-        if (credentials.HasToken && !credentials.IsExpired(now))
+        // Between calls this falls through to the local readings, and the coordinator keeps the
+        // last answer on screen while they are older.
+        var apiDue = now - _lastApiAttempt >= MinApiInterval;
+
+        if (credentials.HasToken && !credentials.IsExpired(now) && apiDue)
         {
             if (_policy.CanAttempt(now))
             {
+                _lastApiAttempt = now;
                 var (snapshot, problem) = await CallUsageEndpointAsync(credentials, now, cancellationToken)
                     .ConfigureAwait(false);
 
@@ -94,6 +107,13 @@ public sealed class ClaudeUsageProvider : IUsageProvider
         if (apiProblem is not null)
         {
             return UsageSnapshot.Failure(Id, SnapshotStatus.Error, apiProblem);
+        }
+
+        if (credentials.HasToken && !credentials.IsExpired(now))
+        {
+            // A valid session between two calls, with nothing local to offer: the last answer
+            // stands, and there is nothing wrong to report.
+            return new UsageSnapshot { Provider = Id, Status = SnapshotStatus.Error };
         }
 
         return UsageSnapshot.Failure(

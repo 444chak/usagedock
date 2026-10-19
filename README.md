@@ -113,7 +113,7 @@ Both providers are read from files already on your machine. Nothing is sent anyw
 | **Codex** | Rate limits the Codex CLI and VS Code extension record in `%USERPROFILE%\.codex\sessions\` | As fresh as your last Codex turn |
 | **Claude** | Usage history Claude Desktop writes to disk | Every 15 minutes while Claude Desktop is open |
 | **Claude** (opt in) | What Claude Code reports to its status line, in a terminal | Every Claude Code response |
-| **Claude** (if available) | Usage endpoint, with the token of the standalone Claude Code CLI | Live |
+| **Claude** (if available) | Usage endpoint, with the token of the standalone Claude Code CLI | Every 5 minutes |
 
 Quotas are per account, so usage from the web, the browser extensions or another machine is
 included the next time one of these sources refreshes.
@@ -128,7 +128,10 @@ included the next time one of these sources refreshes.
 used as a bearer token for one request. It is preferred because it is live and carries exact
 reset times. The file is never modified, and the token is never logged, cached or written
 anywhere. 401 and 403 are reported as a credentials problem rather than retried; 429 honours
-`Retry-After`; anything else backs off exponentially from 30 seconds to 30 minutes.
+`Retry-After`; anything else backs off exponentially from 30 seconds to 30 minutes. The endpoint
+refuses to be asked every minute, so it is asked every five minutes at most, and in between the
+last answer stays on screen. Whatever the source, the dock never swaps the reading it shows for
+an older one.
 
 **The local usage history.** Claude Desktop keeps its session in an encrypted store, so on those
 machines there is no token to use, and decrypting another application's protected store is not

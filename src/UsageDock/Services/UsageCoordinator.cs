@@ -154,17 +154,11 @@ public sealed class UsageCoordinator : IAsyncDisposable
             snapshot = UsageSnapshot.Failure(provider.Id, SnapshotStatus.Error, "Unexpected error");
         }
 
-        var servedFromCache = false;
+        (snapshot, var servedFromCache) = Reconcile(snapshot, _cache.Get(provider.Id));
 
-        if (snapshot.Status == SnapshotStatus.Ok)
+        if (!servedFromCache && snapshot.Status == SnapshotStatus.Ok)
         {
             _cache.Store(snapshot);
-        }
-        else if (_cache.Get(provider.Id) is { } cached)
-        {
-            // Keep the numbers on screen, but carry the reason the refresh failed.
-            snapshot = cached with { Message = snapshot.Message };
-            servedFromCache = true;
         }
 
         snapshot = snapshot.AsOf(DateTimeOffset.UtcNow);
@@ -172,6 +166,29 @@ public sealed class UsageCoordinator : IAsyncDisposable
         LogOutcome(provider.Id, snapshot, servedFromCache);
 
         Updated?.Invoke(new ProviderUpdate(provider.Id, snapshot, CurrentActivity(provider.Id)));
+    }
+
+    /// <summary>
+    /// Decides what to show from a fresh poll and the last good reading.
+    ///
+    /// The newest reading wins, whichever source it came from. A provider can legitimately answer
+    /// with an older reading than the one on screen: when the Claude usage endpoint throttles, the
+    /// fallback is a desktop sample that may be hours old, and showing it flipped the dock between
+    /// the live numbers and a stale zero on every other poll. A failed or older poll keeps the
+    /// cached numbers and only carries its message.
+    /// </summary>
+    internal static (UsageSnapshot Snapshot, bool ServedFromCache) Reconcile(
+        UsageSnapshot fetched,
+        UsageSnapshot? cached)
+    {
+        if (fetched.Status == SnapshotStatus.Ok && (cached is null || fetched.UpdatedAt >= cached.UpdatedAt))
+        {
+            return (fetched, false);
+        }
+
+        return cached is null
+            ? (fetched, false)
+            : (cached with { Message = fetched.Message }, true);
     }
 
     /// <summary>

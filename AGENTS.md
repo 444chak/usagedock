@@ -187,13 +187,22 @@ window's reset time passes it is shown at 0% without waiting for the source (`Qu
 applied when the coordinator publishes). This relies on every source reporting a reset that lies
 after its own reading; keep that true for any new source.
 
+**The newest reading wins, across sources and across polls.** `UsageCoordinator.Reconcile` never
+replaces the reading on screen with an older one, even one a provider reports as Ok. A fallback
+can be hours old: when the Claude usage endpoint throttled, the provider fell back to a desktop
+sample from the day before, and the dock flipped between the live 28% and a rolled over 0% on
+every other poll. Every source must therefore set `UpdatedAt` to when its reading was taken, not
+to when it was read.
+
 **Claude** has two sources, tried in this order:
 
 1. `%USERPROFILE%\.claude\.credentials.json`, the OAuth token of the standalone CLI, used against
    the usage endpoint. Live, with exact reset times. Claude Desktop leaves those token fields
    empty; running the standalone `claude` in a terminal fills them. That first happened on the
    development machine on 2026-10-11 and the endpoint answered with live numbers, but it is still
-   the least exercised path.
+   the least exercised path. Asked once a minute it answers 429 every other time, so it is asked
+   at most every `ClaudeUsageProvider.MinApiInterval` (five minutes) whatever the poll interval;
+   the file watchers trigger polls too, and must not turn into extra calls.
 2. The local readings, whichever is newer (`ClaudeUsageProvider.Freshest`):
    - `%USERPROFILE%\.usagedock\claude-statusline.json`, the `rate_limits` object Claude Code hands
      its status line, stored by `--usagedock-statusline` (opt in, tray menu). Exact resets,
