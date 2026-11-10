@@ -12,8 +12,8 @@ namespace UsageDock.Providers;
 /// there the usage endpoint is the better source: it is live and it carries exact reset times.
 /// Claude Desktop keeps its session in an encrypted Electron store instead, so on those machines
 /// there is no bearer token to use, and the quotas come from what is on disk: the readings Claude
-/// Code hands its status line, and the usage history the desktop app samples every fifteen
-/// minutes. Whichever was taken last wins. Either way nothing but the app itself ever sees a
+/// Code hands its status line, and the usage history the desktop app samples now and then.
+/// Whichever was taken last wins. Either way nothing but the app itself ever sees a
 /// credential.
 /// </summary>
 public sealed class ClaudeUsageProvider : IUsageProvider
@@ -34,15 +34,21 @@ public sealed class ClaudeUsageProvider : IUsageProvider
     private readonly string? _credentialsPath;
     private readonly string? _localUsagePath;
     private readonly string? _statusLinePath;
+    private readonly IClaudeCliUsage? _cli;
     private DateTimeOffset _lastApiAttempt = DateTimeOffset.MinValue;
 
+    /// <param name="cli">
+    /// The Claude Code CLI to ask when there is no usable token, or null to never start it. Null
+    /// by default so that nothing but the app itself ever spawns the CLI, tests included.
+    /// </param>
     public ClaudeUsageProvider(
         HttpClient http,
         RateLimitPolicy? policy = null,
         Func<DateTimeOffset>? now = null,
         string? credentialsPath = null,
         string? localUsagePath = null,
-        string? statusLinePath = null)
+        string? statusLinePath = null,
+        IClaudeCliUsage? cli = null)
     {
         _http = http;
         _policy = policy ?? new RateLimitPolicy();
@@ -50,6 +56,7 @@ public sealed class ClaudeUsageProvider : IUsageProvider
         _credentialsPath = credentialsPath;
         _localUsagePath = localUsagePath;
         _statusLinePath = statusLinePath;
+        _cli = cli;
     }
 
     public ProviderId Id => ProviderId.Claude;
@@ -64,13 +71,20 @@ public sealed class ClaudeUsageProvider : IUsageProvider
         // last answer on screen while they are older.
         var apiDue = now - _lastApiAttempt >= MinApiInterval;
 
-        if (credentials.HasToken && !credentials.IsExpired(now) && apiDue)
+        // Both live sources end at the same endpoint, so they share the interval and the backoff.
+        // The token is cheaper to use when there is one; the CLI covers the far more common case
+        // where Claude Desktop holds the only session.
+        var useToken = credentials.HasToken && !credentials.IsExpired(now);
+        var useCli = !useToken && _cli is { IsSignedIn: true };
+
+        if ((useToken || useCli) && apiDue)
         {
             if (_policy.CanAttempt(now))
             {
                 _lastApiAttempt = now;
-                var (snapshot, problem) = await CallUsageEndpointAsync(credentials, now, cancellationToken)
-                    .ConfigureAwait(false);
+                var (snapshot, problem) = useToken
+                    ? await CallUsageEndpointAsync(credentials, now, cancellationToken).ConfigureAwait(false)
+                    : await AskCliAsync(credentials, now, cancellationToken).ConfigureAwait(false);
 
                 if (snapshot is not null)
                 {
@@ -109,7 +123,7 @@ public sealed class ClaudeUsageProvider : IUsageProvider
             return UsageSnapshot.Failure(Id, SnapshotStatus.Error, apiProblem);
         }
 
-        if (credentials.HasToken && !credentials.IsExpired(now))
+        if (useToken || useCli)
         {
             // A valid session between two calls, with nothing local to offer: the last answer
             // stands, and there is nothing wrong to report.
@@ -226,6 +240,41 @@ public sealed class ClaudeUsageProvider : IUsageProvider
             Log.Error($"Claude usage request failed, backing off {FormatDelay(delay)}", ex);
             return (null, "Network error");
         }
+    }
+
+    /// <summary>Same contract as <see cref="CallUsageEndpointAsync"/>, through the Claude Code CLI.</summary>
+    private async Task<(UsageSnapshot? Snapshot, string? Problem)> AskCliAsync(
+        ClaudeCredentialsReader.Result credentials,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await _cli!.GetUsageAsync(cancellationToken).ConfigureAwait(false);
+        var parsed = outcome.Response is null ? null : ClaudeCliUsageParser.Parse(outcome.Response);
+
+        if (parsed is { Available: true })
+        {
+            _policy.RecordSuccess();
+
+            return (new UsageSnapshot
+            {
+                Provider = Id,
+                Status = SnapshotStatus.Ok,
+                Windows = parsed.Windows,
+                Plan = parsed.Plan ?? credentials.SubscriptionType,
+                UpdatedAt = now
+            }, null);
+        }
+
+        // Not signed in, a throttled endpoint and an unknown shape all look the same from here:
+        // no windows. Backing off keeps a broken login from starting a process every poll.
+        var problem = outcome.Problem
+                      ?? parsed?.Error
+                      ?? (parsed is null
+                          ? "Unreadable answer from the Claude Code CLI"
+                          : "No usage from the Claude Code CLI, sign it in again from the tray menu");
+        var delay = _policy.RecordFailure(now);
+        Log.Warn($"{problem}, backing off {FormatDelay(delay)}");
+        return (null, problem);
     }
 
     internal static string FormatDelay(TimeSpan delay) =>

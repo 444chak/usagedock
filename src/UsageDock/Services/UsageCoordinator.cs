@@ -47,7 +47,7 @@ public sealed class UsageCoordinator : IAsyncDisposable
 
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("UsageDock/1.0");
 
-        _claude = new ClaudeUsageProvider(_http);
+        _claude = new ClaudeUsageProvider(_http, cli: new ClaudeCli());
         _codex = new CodexUsageProvider();
     }
 
@@ -66,8 +66,8 @@ public sealed class UsageCoordinator : IAsyncDisposable
         // Activity is cheap and local, so it can refresh much faster than the quotas.
         _activityTimer = new Timer(_ => PublishActivity(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2));
 
-        // Claude Desktop writes a new usage sample every fifteen minutes. Reacting to the write
-        // means a new sample shows up at once instead of waiting for the next poll.
+        // Claude Desktop writes a usage sample now and then, without warning. Reacting to the
+        // write means a new sample shows up at once instead of waiting for the next poll.
         _claudeWatcher = new UsageFileWatcher(AppPaths.ClaudeDesktopUsageFile);
         _claudeWatcher.Changed += () => _ = PollAsync();
 
@@ -183,12 +183,41 @@ public sealed class UsageCoordinator : IAsyncDisposable
     {
         if (fetched.Status == SnapshotStatus.Ok && (cached is null || fetched.UpdatedAt >= cached.UpdatedAt))
         {
-            return (fetched, false);
+            return (cached is null ? fetched : CarryResets(fetched, cached), false);
         }
 
         return cached is null
             ? (fetched, false)
             : (cached with { Message = fetched.Message }, true);
+    }
+
+    /// <summary>
+    /// Gives a newer reading that could not tell its reset the one the older reading knew, when
+    /// that reset still lies after the newer reading.
+    ///
+    /// The cached reading was taken inside the window that ends at its reset, and the newer one
+    /// was taken later but before that reset, so both sit in the same window. This matters for
+    /// the Claude Desktop history, which carries no reset and is now sampled days apart: without
+    /// it the weekly window of a desktop sample following a live reading had no reset at all, and
+    /// stayed on screen unchanged past the real rollover.
+    /// </summary>
+    internal static UsageSnapshot CarryResets(UsageSnapshot fetched, UsageSnapshot cached)
+    {
+        if (fetched.Windows.All(static w => w.ResetsAt is not null))
+        {
+            return fetched;
+        }
+
+        var windows = fetched.Windows
+            .Select(window => window.ResetsAt is null
+                && cached.Windows.FirstOrDefault(known =>
+                    known.WindowLength == window.WindowLength
+                    && known.ResetsAt > fetched.UpdatedAt) is { } known
+                    ? window with { ResetsAt = known.ResetsAt }
+                    : window)
+            .ToList();
+
+        return fetched with { Windows = windows };
     }
 
     /// <summary>

@@ -163,6 +163,13 @@ public static class AppPaths
     /// </summary>
     public static string ClaudeStatusLineFile => Path.Combine(UserProfile, ".usagedock", "claude-statusline.json");
 
+    /// <summary>
+    /// The Claude Code CLI login UsageDock asks for usage, kept apart from <c>~/.claude</c> because
+    /// the CLI Claude Desktop runs there blanks the token fields. Under the profile root so a login
+    /// made from a terminal inside the Claude Desktop container is the one the dock sees.
+    /// </summary>
+    public static string ClaudeCliConfigDirectory => Path.Combine(UserProfile, ".usagedock", "claude-cli");
+
     public static string ClaudeHome => Path.Combine(UserProfile, ".claude");
 
     public static string ClaudeCredentialsFile => Path.Combine(ClaudeHome, ".credentials.json");
@@ -181,32 +188,41 @@ public static class AppPaths
         p => Directory.Exists(Path.GetDirectoryName(p)));
 
     /// <summary>
-    /// Where the usage history might be, most conventional first: the classic install writes to
-    /// the real roaming folder; the Store package writes to its own virtualised copy under
-    /// Packages. The publisher hash after the underscore is not hard coded, so a re-signed
-    /// package still matches.
+    /// Where the usage history might be, current layout first.
+    ///
+    /// Since November 2026 Claude Desktop keeps its data in <c>%LOCALAPPDATA%\Claude-Data\&lt;install&gt;\</c>
+    /// (the Store package uses its lower cased package family name, <c>claude_&lt;hash&gt;</c>) and
+    /// leaves a <c>.user-data-left.*</c> marker in the folder it moved out of. Before that, the
+    /// classic install wrote to the real roaming folder and the Store package to its virtualised
+    /// copy under Packages. The older homes stay listed for installs that have not moved yet. No
+    /// hash is hard coded, so a re-signed package still matches.
     /// </summary>
     internal static IEnumerable<string> ClaudeDesktopUsageCandidates()
     {
+        foreach (var dir in Subdirectories(Path.Combine(LocalAppData, "Claude-Data"), "*"))
+        {
+            yield return Path.Combine(dir, UsageHistoryFileName);
+        }
+
         yield return Path.Combine(RoamingAppData, "Claude", UsageHistoryFileName);
 
-        var packages = Path.Combine(LocalAppData, "Packages");
-        IEnumerable<string> packageDirs;
+        foreach (var dir in Subdirectories(Path.Combine(LocalAppData, "Packages"), "Claude_*"))
+        {
+            yield return Path.Combine(dir, "LocalCache", "Roaming", "Claude", UsageHistoryFileName);
+        }
+    }
 
+    private static IReadOnlyList<string> Subdirectories(string parent, string pattern)
+    {
         try
         {
-            packageDirs = Directory.Exists(packages)
-                ? Directory.EnumerateDirectories(packages, "Claude_*").OrderBy(static d => d, StringComparer.OrdinalIgnoreCase)
+            return Directory.Exists(parent)
+                ? Directory.EnumerateDirectories(parent, pattern).Order(StringComparer.OrdinalIgnoreCase).ToList()
                 : [];
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            yield break;
-        }
-
-        foreach (var dir in packageDirs)
-        {
-            yield return Path.Combine(dir, "LocalCache", "Roaming", "Claude", UsageHistoryFileName);
+            return [];
         }
     }
 

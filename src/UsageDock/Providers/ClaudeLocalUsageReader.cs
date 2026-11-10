@@ -12,7 +12,9 @@ namespace UsageDock.Providers;
 /// than in .credentials.json, so on a machine without the standalone CLI there is no bearer
 /// token to call the usage endpoint with, but the numbers are sitting on disk anyway.
 ///
-/// The file is a list of samples, roughly one every fifteen minutes:
+/// The file is a list of samples. It used to gain one every fifteen minutes; since November 2026
+/// it gains one every few days, typically when the desktop app starts, so a sample can be days
+/// old and its neighbours days apart:
 /// <c>{ "t": &lt;epoch ms&gt;, "org": "...", "u": { "fh": &lt;5h %&gt;, "sd": &lt;7d %&gt; } }</c>.
 /// The org identifier is deliberately never read.
 /// </summary>
@@ -166,8 +168,10 @@ public static class ClaudeLocalUsageReader
             return null;
         }
 
+        var windowMs = (long)window.TotalMilliseconds;
         var index = samples.Count - 1;
         while (index > 0
+               && samples[index].TimestampMs - samples[index - 1].TimestampMs < windowMs
                && selector(samples[index - 1]) > 0d
                && selector(samples[index - 1]) <= selector(samples[index]))
         {
@@ -180,7 +184,16 @@ public static class ClaudeLocalUsageReader
             return null;
         }
 
-        var openedMs = (samples[index - 1].TimestampMs + samples[index].TimestampMs) / 2;
+        var previousMs = samples[index - 1].TimestampMs;
+        var firstMs = samples[index].TimestampMs;
+
+        // Two samples a full window apart cannot share a window, however the numbers compare, so
+        // the window opened somewhere in the last window length before the first sample of the
+        // run. The midpoint would be a guess; the first sample itself bounds the reset from above,
+        // which at worst keeps a stale number up a little longer but never zeroes one too early.
+        // Claude Desktop now samples a few times a week rather than every fifteen minutes, so
+        // this is the usual case, not the exception.
+        var openedMs = firstMs - previousMs >= windowMs ? firstMs : (previousMs + firstMs) / 2;
         var reset = DateTimeOffset.FromUnixTimeMilliseconds(openedMs) + window;
 
         return reset <= DateTimeOffset.FromUnixTimeMilliseconds(samples[^1].TimestampMs) ? null : reset;

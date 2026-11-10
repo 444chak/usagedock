@@ -155,6 +155,47 @@ public class SnapshotReconcileTests
         Assert.Equal("Network error", shown.Message);
     }
 
+    private static UsageSnapshot Weekly(DateTimeOffset at, double used, DateTimeOffset? resetsAt) => new()
+    {
+        Provider = ProviderId.Claude,
+        Status = SnapshotStatus.Ok,
+        Windows = [QuotaWindow.Create("Weekly", used, resetsAt, TimeSpan.FromDays(7))],
+        UpdatedAt = at
+    };
+
+    [Fact]
+    public void A_newer_reading_without_a_reset_keeps_the_one_the_cached_reading_knew()
+    {
+        // A live reading, then a desktop sample two days later that carries no reset. Both lie in
+        // the window ending at the live reset, so the sample can still roll over on time.
+        var reset = Now.AddDays(4);
+        var (shown, _) = UsageCoordinator.Reconcile(Weekly(Now, 43, null), Weekly(Now.AddDays(-2), 33, reset));
+
+        Assert.Equal(43d, shown.Windows[0].UsedPercent);
+        Assert.Equal(reset, shown.Windows[0].ResetsAt);
+    }
+
+    [Fact]
+    public void A_cached_reset_that_passed_before_the_newer_reading_is_not_carried()
+    {
+        var (shown, _) = UsageCoordinator.Reconcile(
+            Weekly(Now, 5, null),
+            Weekly(Now.AddDays(-3), 90, Now.AddDays(-1)));
+
+        Assert.Null(shown.Windows[0].ResetsAt);
+    }
+
+    [Fact]
+    public void A_reset_the_newer_reading_knows_is_never_overridden()
+    {
+        var own = Now.AddDays(6);
+        var (shown, _) = UsageCoordinator.Reconcile(
+            Weekly(Now, 5, own),
+            Weekly(Now.AddDays(-1), 4, Now.AddDays(5)));
+
+        Assert.Equal(own, shown.Windows[0].ResetsAt);
+    }
+
     [Fact]
     public void With_nothing_cached_the_poll_is_shown_as_it_is()
     {

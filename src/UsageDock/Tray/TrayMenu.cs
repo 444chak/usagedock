@@ -17,6 +17,7 @@ public sealed class TrayMenu : IDisposable
     private readonly ToolStripMenuItem _installHooksItem;
     private readonly ToolStripMenuItem _uninstallHooksItem;
     private readonly ToolStripMenuItem _statusLineItem;
+    private readonly ToolStripMenuItem _cliLoginItem;
     private readonly ToolStripMenuItem _foldItem;
     private readonly Dictionary<DockEdge, ToolStripMenuItem> _edgeItems = [];
     private readonly HookInstaller _hooks;
@@ -54,6 +55,9 @@ public sealed class TrayMenu : IDisposable
         _statusLineItem = new ToolStripMenuItem("Live Claude usage from Claude Code") { CheckOnClick = false };
         _statusLineItem.Click += (_, _) => ToggleStatusLine();
 
+        _cliLoginItem = new ToolStripMenuItem("Live Claude usage from the Claude Code CLI…") { CheckOnClick = false };
+        _cliLoginItem.Click += (_, _) => StartCliLogin();
+
         var refreshItem = new ToolStripMenuItem("Refresh usage now");
         refreshItem.Click += (_, _) => RefreshRequested?.Invoke();
 
@@ -78,6 +82,7 @@ public sealed class TrayMenu : IDisposable
             _installHooksItem,
             _uninstallHooksItem,
             _statusLineItem,
+            _cliLoginItem,
             new ToolStripSeparator(),
             folderItem,
             quitItem
@@ -133,6 +138,30 @@ public sealed class TrayMenu : IDisposable
         _uninstallHooksItem.Enabled = installed;
 
         _statusLineItem.Checked = _statusLine.IsInstalled();
+
+        var cliFound = Providers.ClaudeCli.FindExecutable() is not null;
+        _cliLoginItem.Enabled = cliFound;
+        _cliLoginItem.Checked = cliFound && new Providers.ClaudeCli().IsSignedIn;
+        _cliLoginItem.ToolTipText = cliFound
+            ? "Signs a Claude Code CLI in, in a folder of its own, for UsageDock to ask for usage."
+            : "Install Claude Code (claude.exe) first.";
+    }
+
+    /// <summary>
+    /// Opens a console for the browser sign in. Also the way to sign in again when the login has
+    /// expired, so it stays clickable once signed in.
+    /// </summary>
+    private void StartCliLogin()
+    {
+        if (Providers.ClaudeCli.StartLogin())
+        {
+            Log.Info("Claude Code CLI login started");
+            Notify("Sign in in the window that opened. Usage turns live within a minute of it.");
+        }
+        else
+        {
+            Notify("Could not start the Claude Code CLI, see the log.");
+        }
     }
 
     private void ToggleAutostart()

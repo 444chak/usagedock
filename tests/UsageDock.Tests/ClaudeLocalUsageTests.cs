@@ -103,9 +103,32 @@ public class ClaudeLocalUsageReaderTests
         // The run opened more than five hours before the newest sample, which still shows usage,
         // so the window cannot have rolled when the inference says it did.
         var result = ClaudeLocalUsageReader.Parse(
-            Document((600, 0, 1), (595, 5, 2), (0, 40, 3)));
+            Document((720, 0, 1), (715, 5, 2), (480, 20, 2), (240, 30, 3), (0, 40, 3)));
 
         Assert.Null(result!.Windows[0].ResetsAt);
+    }
+
+    [Fact]
+    public void Samples_a_window_apart_never_share_a_window()
+    {
+        // The history as Claude Desktop writes it since November 2026, days between samples. The
+        // 5 hour usage grew from 13 to 62, but five days apart that is two windows, and the
+        // newest one rolls at the latest five hours after its sample.
+        var result = ClaudeLocalUsageReader.Parse(
+            Document((10_080, 69, 18), (7_200, 13, 30), (0, 62, 43)));
+
+        Assert.Equal(Now.AddHours(5), result!.Windows[0].ResetsAt);
+    }
+
+    [Fact]
+    public void A_sample_far_from_its_predecessor_bounds_the_reset_rather_than_guessing()
+    {
+        // The window opened somewhere in the five hours before the first sample of the run; the
+        // midpoint of a two day gap would put the reset long before the newest sample.
+        var result = ClaudeLocalUsageReader.Parse(
+            Document((2_880, 0, 5), (90, 10, 6), (0, 30, 7)));
+
+        Assert.Equal(Now.AddMinutes(-90).AddHours(5), result!.Windows[0].ResetsAt);
     }
 
     [Fact]

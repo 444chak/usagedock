@@ -194,24 +194,41 @@ sample from the day before, and the dock flipped between the live 28% and a roll
 every other poll. Every source must therefore set `UpdatedAt` to when its reading was taken, not
 to when it was read.
 
-**Claude** has two sources, tried in this order:
+**Claude** has three sources, tried in this order:
 
 1. `%USERPROFILE%\.claude\.credentials.json`, the OAuth token of the standalone CLI, used against
    the usage endpoint. Live, with exact reset times. Claude Desktop leaves those token fields
    empty; running the standalone `claude` in a terminal fills them. That first happened on the
    development machine on 2026-10-11 and the endpoint answered with live numbers, but it is still
-   the least exercised path. Asked once a minute it answers 429 every other time, so it is asked
+   the least exercised path, and not a lasting one: on 2026-11-08 around 23:45 the fields were
+   emptied again, and the dock silently fell back to local readings. Asked once a minute it answers 429 every other time, so it is asked
    at most every `ClaudeUsageProvider.MinApiInterval` (five minutes) whatever the poll interval;
    the file watchers trigger polls too, and must not turn into extra calls.
-2. The local readings, whichever is newer (`ClaudeUsageProvider.Freshest`):
+2. The Claude Code CLI (`ClaudeCli`), when there is no usable token and a dedicated login exists
+   in `%USERPROFILE%\.usagedock\claude-cli\` (the tray menu runs `claude auth login` with
+   `CLAUDE_CONFIG_DIR` pointing there). The dock starts `claude.exe -p --input-format stream-json`
+   and sends a `get_usage` control request with `skip_behaviors`, which answers with the usage
+   endpoint's windows under `rate_limits`. Same interval and backoff as the token, since it ends at
+   the same endpoint. This keeps invariant 2: the CLI refreshes and uses its own token, and the
+   dock only checks that its `.credentials.json` exists. The child gets a clean environment (every
+   `CLAUDE*` and `ANTHROPIC*` variable removed, which matters when the dock was started from a
+   Claude Code shell), hooks disabled so UsageDock's own hooks do not flag the probe as activity,
+   and `DISABLE_AUTOUPDATER`. Anthropic calls the request experimental
+   (`usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET` in the SDK); `ClaudeCliUsageParser`
+   degrades to null, and the provider falls through to the local readings. `ClaudeUsageProvider`
+   only gets a CLI from the coordinator, never by default, so tests cannot spawn one.
+3. The local readings, whichever is newer (`ClaudeUsageProvider.Freshest`):
    - `%USERPROFILE%\.usagedock\claude-statusline.json`, the `rate_limits` object Claude Code hands
      its status line, stored by `--usagedock-statusline` (opt in, tray menu). Exact resets,
      refreshed on every response, but only while Claude Code runs in a terminal: **the Code tab of
      Claude Desktop never runs a status line**, verified on 2026-10-11. Nothing else of the
      payload is stored; it names the session, the working directory and the transcript.
-   - `plan-usage-history.json`, written by Claude Desktop every fifteen minutes. Classic install:
-     `%APPDATA%\Claude\`. Store (MSIX) install: `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`.
-     `AppPaths.ClaudeDesktopUsageFile` checks both on every access and the newest wins. Shape:
+   - `plan-usage-history.json`, written by Claude Desktop. Since 2026-11-10 it lives in
+     `%LOCALAPPDATA%\Claude-Data\<install>\` (Store: `claude_<hash>`, lower cased), outside the
+     MSIX virtualisation, and a `.user-data-left.*` marker sits where it used to be: classic
+     install `%APPDATA%\Claude\`, Store install `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`.
+     `AppPaths.ClaudeDesktopUsageFile` checks all of them on every access and the newest wins; the
+     watcher binds at startup, so a move while the dock runs needs a restart. Shape:
      `{ "t": <epoch ms>, "org": "...", "u": { "fh": <5h percent>, "sd": <7d percent> } }`. No token,
      no network. This is the source that actually runs day to day.
 
@@ -219,9 +236,15 @@ The history carries no reset timestamp. `ClaudeLocalUsageReader.InferReset` deri
 only grows inside a window and drops when one rolls, so the start of the current run of non zero
 samples locates the window. When it cannot be determined, report nothing rather than a guess.
 
-Fifteen minutes is a hard ceiling on the freshness of the desktop history. `UsageFileWatcher`
-removes the additional polling lag but cannot beat the sampling rate. Do not add faster polling
-hoping to improve it; the status line feed is the way past it.
+The history used to gain a sample every fifteen minutes. By November 2026 samples are days apart,
+typically one when the desktop app starts, so neighbouring samples often belong to different
+windows. `InferReset` therefore never joins two samples a full window apart, and when the run
+starts after such a gap it bounds the reset by that first sample plus one window rather than
+guessing a midpoint. When the history still cannot tell, `UsageCoordinator.CarryResets` reuses
+the exact reset of the cached reading, provided it lies after the new sample, which puts both in
+the same window. `UsageFileWatcher` removes polling lag but cannot beat the sampling rate. Do not
+add faster polling hoping to improve it; the status line feed and the usage endpoint are the only
+ways past it.
 
 ## Activity states
 

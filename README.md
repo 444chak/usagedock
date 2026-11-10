@@ -90,6 +90,7 @@ bar and a reset countdown, and how old the reading is.
 | Start with Windows | Launches the dock at sign in. |
 | Install / Uninstall Claude Code hooks | Turns the activity dot on or off for Claude. |
 | Live Claude usage from Claude Code | Feeds the dock the quotas Claude Code reports to its status line. |
+| Live Claude usage from the Claude Code CLI… | Opens a console to sign a Claude Code CLI in, in a folder of its own, for the dock to ask for live usage. Ticked once signed in; click again to sign in anew. |
 | Open data folder | Config, cache and logs. |
 
 ### Reading the rings
@@ -111,9 +112,10 @@ Both providers are read from files already on your machine. Nothing is sent anyw
 | Provider | Source | Freshness |
 | --- | --- | --- |
 | **Codex** | Rate limits the Codex CLI and VS Code extension record in `%USERPROFILE%\.codex\sessions\` | As fresh as your last Codex turn |
-| **Claude** | Usage history Claude Desktop writes to disk | Every 15 minutes while Claude Desktop is open |
+| **Claude** | Usage history Claude Desktop writes to disk | A few times a week, mostly when it starts |
 | **Claude** (opt in) | What Claude Code reports to its status line, in a terminal | Every Claude Code response |
 | **Claude** (if available) | Usage endpoint, with the token of the standalone Claude Code CLI | Every 5 minutes |
+| **Claude** (opt in) | The Claude Code CLI's own usage request, with a login kept for the dock | Every 5 minutes |
 
 Quotas are per account, so usage from the web, the browser extensions or another machine is
 included the next time one of these sources refreshes.
@@ -135,10 +137,10 @@ an older one.
 
 **The local usage history.** Claude Desktop keeps its session in an encrypted store, so on those
 machines there is no token to use, and decrypting another application's protected store is not
-something this app does. It does not need to: Claude Desktop writes `plan-usage-history.json`, one
-sample every fifteen minutes. The classic installer keeps it in `%APPDATA%\Claude\`, the Store
-package in `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`. Both are checked and the
-newest wins.
+something this app does. It does not need to: Claude Desktop writes `plan-usage-history.json`. Current
+versions keep it in `%LOCALAPPDATA%\Claude-Data\<install>\`; before November 2026 the classic
+installer kept it in `%APPDATA%\Claude\` and the Store package in
+`%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`. All are checked and the newest wins.
 
 ```json
 { "t": 1788899116963, "org": "...", "u": { "fh": 52, "sd": 14 } }
@@ -148,12 +150,27 @@ newest wins.
 
 The history has no reset timestamp. Usage only grows inside a window and drops when one rolls, so
 the start of the current run of non zero samples locates the window, and the reset is one window
-length later, accurate to about half a sampling interval. When that cannot be determined the card
-says `unknown` rather than guessing.
+length later, accurate to about half a sampling interval. Samples a whole window apart never
+count as one window; the reset is then put at the latest it can be, one window after the sample.
+When nothing can be determined, the dock keeps the exact reset an earlier live reading gave, if
+it still applies, and otherwise the card says `unknown` rather than guessing.
 
 The file is watched, so a new sample shows up the moment it lands rather than at the next poll.
-Fifteen minutes remains the ceiling: no amount of polling can beat the rate at which Claude Desktop
+It used to gain a sample every fifteen minutes; it now gains one every few days, so on its own it
+is a fallback, not a meter. No amount of polling can beat the rate at which Claude Desktop
 samples.
+
+**The Claude Code CLI.** Claude Desktop reads usage from claude.ai with its own session and
+leaves nothing live on disk, and the CLI it runs for the Code tab shares `%USERPROFILE%\.claude`
+with the standalone one, whose token has been found blanked there. **Live Claude usage from the
+Claude Code CLI…** in the tray menu opens a console running `claude auth login` with
+`CLAUDE_CONFIG_DIR` set to `%USERPROFILE%\.usagedock\claude-cli`, a folder nothing else touches.
+Once you have signed in in your browser, the dock starts `claude.exe` every five minutes, without
+hooks, MCP servers, session files or self updates, sends it the `get_usage` control request on its
+stream-json interface and reads the five hour and weekly windows back, with exact resets. The CLI
+refreshes its own login; UsageDock never reads, holds or writes the token. Anthropic marks this
+request experimental, so if its answer stops making sense the dock falls back to the other
+sources. The login lasts about a month; click the item again to renew it.
 
 **The status line feed.** Claude Code passes its status line the five hour and weekly percentages
 with their exact reset times, taken from every API response. **Live Claude usage from Claude

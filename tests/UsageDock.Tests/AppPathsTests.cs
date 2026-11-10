@@ -201,8 +201,17 @@ public class ClaudeUsageFileSelectionTests
     }
 
     [Fact]
-    public void The_classic_location_is_always_the_first_candidate() =>
-        Assert.StartsWith(AppPaths.RoamingAppData, AppPaths.ClaudeDesktopUsageCandidates().First(), StringComparison.OrdinalIgnoreCase);
+    public void Only_the_current_data_folder_comes_before_the_classic_location()
+    {
+        // Claude Desktop moved its data to %LOCALAPPDATA%\Claude-Data in November 2026; the
+        // classic and Store homes stay listed for installs that have not moved yet.
+        var candidates = AppPaths.ClaudeDesktopUsageCandidates().ToList();
+        var classic = candidates.FindIndex(c => c.StartsWith(AppPaths.RoamingAppData, StringComparison.OrdinalIgnoreCase));
+        var moved = Path.Combine(AppPaths.LocalAppData, "Claude-Data") + Path.DirectorySeparatorChar;
+
+        Assert.True(classic >= 0);
+        Assert.All(candidates.Take(classic), c => Assert.StartsWith(moved, c, StringComparison.OrdinalIgnoreCase));
+    }
 
     [Fact]
     public void The_activity_exchange_lives_outside_appdata()
