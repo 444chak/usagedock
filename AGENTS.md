@@ -182,6 +182,21 @@ Windows leaves its last write time at creation until the handle closes, so a lon
 at 100% looked older than a short one at 80%. `auth.json` is probed only for whether a session
 exists.
 
+The rollouts are no longer enough on their own. On 2026-11-12 the Codex desktop app (Store
+package `OpenAI.Codex_*`) became the build merged with ChatGPT, which runs its conversations on
+OpenAI's side: a thread shows up in `~/.codex/sqlite/codex.db` with a `chatgpt:` host and no
+rollout is written, so a day in the app left the dock on the previous day's reading. `CodexCli`
+therefore starts `codex app-server` and sends `initialize`, `initialized` and
+`account/rateLimits/read` over its JSON-RPC stdio, at most every
+`CodexUsageProvider.MinCliInterval` (two minutes), with the same backoff as the Claude sources.
+Codex signs that request with its own login; the dock reads percentages back and never a token,
+which keeps invariant 2. The executable is found through the package repository in
+`HKCU\Software\Classes\Local Settings\...\AppModel\Repository\Packages` (`WindowsApps` cannot be
+listed without administrator rights), then the npm install, then PATH. The provider keeps the
+last live reading between asks and shows whichever of it and the rollouts is newer, so a local
+CLI session still shows up at once. Like `ClaudeCli`, it only gets a `CodexCli` from the
+coordinator, so tests never spawn one.
+
 **Resets roll over locally.** A reading only describes the window it was taken in, so once a
 window's reset time passes it is shown at 0% without waiting for the source (`QuotaWindow.AsOf`,
 applied when the coordinator publishes). This relies on every source reporting a reset that lies

@@ -107,11 +107,13 @@ Claude or Codex to report again, and the card shows `reset`.
 
 ## Where the numbers come from
 
-Both providers are read from files already on your machine. Nothing is sent anywhere.
+Files already on your machine come first. The live sources below only ask Anthropic or OpenAI for
+your own usage, through their own tools and logins. Nothing is sent anywhere else.
 
 | Provider | Source | Freshness |
 | --- | --- | --- |
-| **Codex** | Rate limits the Codex CLI and VS Code extension record in `%USERPROFILE%\.codex\sessions\` | As fresh as your last Codex turn |
+| **Codex** | Rate limits the Codex CLI and VS Code extension record in `%USERPROFILE%\.codex\sessions\` | As fresh as your last local Codex turn |
+| **Codex** (if installed) | Codex's own rate limit request, through `codex app-server` and your Codex login | Every 2 minutes |
 | **Claude** | Usage history Claude Desktop writes to disk | A few times a week, mostly when it starts |
 | **Claude** (opt in) | What Claude Code reports to its status line, in a terminal | Every Claude Code response |
 | **Claude** (if available) | Usage endpoint, with the token of the standalone Claude Code CLI | Every 5 minutes |
@@ -206,6 +208,13 @@ long VS Code session would otherwise look older than a short one started after i
 
 `%USERPROFILE%\.codex\auth.json` is opened read only and checked only for whether a session
 exists. No token is read out of it.
+
+The Codex desktop app, since it merged with ChatGPT, runs its conversations on OpenAI's side and
+writes no rollout. So every two minutes UsageDock also starts `codex app-server`, the interface
+the desktop app and the IDE extensions talk to, and asks it for the current rate limits. Codex
+signs that request with its own login; UsageDock only reads the percentages back. It uses the
+`codex.exe` shipped with the desktop app, or the npm install, or one on `PATH`. Whichever reading
+is newer, live or local, is shown.
 
 </details>
 

@@ -48,7 +48,7 @@ public sealed class UsageCoordinator : IAsyncDisposable
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("UsageDock/1.0");
 
         _claude = new ClaudeUsageProvider(_http, cli: new ClaudeCli());
-        _codex = new CodexUsageProvider();
+        _codex = new CodexUsageProvider(cli: new CodexCli());
     }
 
     /// <summary>Raised on a thread pool thread; the UI marshals it.</summary>
